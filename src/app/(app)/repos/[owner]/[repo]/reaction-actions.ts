@@ -4,6 +4,7 @@ import { getOctokit } from "@/lib/github";
 
 export type ReactionUser = {
   login: string;
+  avatar_url: string;
   content: string;
 };
 
@@ -39,6 +40,7 @@ export async function getReactionUsers(
     return {
       users: data.map((r: any) => ({
         login: r.user?.login ?? "unknown",
+        avatar_url: r.user?.avatar_url ?? "",
         content: r.content,
       })),
     };

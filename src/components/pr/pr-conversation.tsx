@@ -1,9 +1,9 @@
 import Link from "next/link";
 import Image from "next/image";
 import { GitCommitHorizontal } from "lucide-react";
-import { timeAgo } from "@/lib/utils";
-import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
+import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { CollapsibleReviewCard } from "./collapsible-review-card";
 import { BotActivityGroup } from "./bot-activity-group";
 import { CommitActivityGroup } from "./commit-activity-group";
@@ -265,7 +265,7 @@ async function ChatMessage({
               </span>
             )}
           <span className="text-[10px] text-muted-foreground/40 ml-auto shrink-0">
-            {timeAgo(entry.created_at)}
+            <TimeAgo date={entry.created_at} />
           </span>
         </div>
 
@@ -365,7 +365,7 @@ function CommitGroup({ commits }: { commits: CommitEntry[] }) {
               {commit.sha.slice(0, 7)}
             </code>
             <span className="text-[10px] text-muted-foreground/40 shrink-0">
-              {timeAgo(commit.created_at)}
+              <TimeAgo date={commit.created_at} />
             </span>
           </div>
         );

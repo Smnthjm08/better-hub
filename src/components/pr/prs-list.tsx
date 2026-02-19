@@ -19,8 +19,12 @@ import {
   X,
   List,
   Columns3,
+  RefreshCw,
 } from "lucide-react";
-import { cn, timeAgo } from "@/lib/utils";
+import type { CheckStatus } from "@/lib/github";
+import { CheckStatusBadge } from "@/components/pr/check-status-badge";
+import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import {
@@ -33,6 +37,7 @@ import {
   LoadingOverlay,
 } from "@/components/shared/list-controls";
 import { LabelBadge } from "@/components/shared/label-badge";
+import { refreshPullRequests } from "@/app/(app)/repos/[owner]/[repo]/pulls/actions";
 
 interface PRUser {
   login: string;
@@ -52,13 +57,14 @@ interface PR {
   user: PRUser | null;
   labels: Array<{ name?: string; color?: string }>;
   merged_at: string | null;
-  head: { ref: string };
+  head: { ref: string; sha: string };
   base: { ref: string };
   requested_reviewers: PRUser[];
   assignees: PRUser[];
   additions: number;
   deletions: number;
   changed_files: number;
+  checkStatus?: CheckStatus;
 }
 
 type SortType = "updated" | "newest" | "oldest" | "comments";
@@ -110,6 +116,7 @@ export function PRsList({
     closed: PR[];
   } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isRefreshing, startRefreshTransition] = useTransition();
   const [showFilters, setShowFilters] = useState(false);
   const [draftFilter, setDraftFilter] = useState<DraftFilter>("all");
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all");
@@ -300,6 +307,19 @@ export function PRsList({
           />
 
           <ClearFiltersButton show={activeFilterCount > 0} onClear={clearAllFilters} />
+
+          <button
+            onClick={() => {
+              startRefreshTransition(async () => {
+                await refreshPullRequests(owner, repo);
+              });
+            }}
+            disabled={isRefreshing}
+            className="p-1.5 border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 dark:hover:bg-white/4 transition-colors cursor-pointer disabled:opacity-50"
+            title="Refresh pull requests"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")} />
+          </button>
         </div>
 
         {/* Advanced filters panel */}
@@ -623,12 +643,15 @@ export function PRsList({
                   </div>
 
                   <div className="flex items-center gap-3 mt-1">
+                    {pr.checkStatus && (
+                      <CheckStatusBadge checkStatus={pr.checkStatus} owner={owner} repo={repo} />
+                    )}
                     <span className="text-[11px] font-mono text-muted-foreground/70">
                       #{pr.number}
                     </span>
                     <span className="flex items-center gap-1 text-[11px] text-muted-foreground/50">
                       <Clock className="w-3 h-3" />
-                      {timeAgo(pr.updated_at)}
+                      <TimeAgo date={pr.created_at} />
                     </span>
                     {totalComments > 0 && (
                       <span className="flex items-center gap-1 text-[11px] text-muted-foreground/50">
@@ -905,7 +928,7 @@ function KanbanBoard({
                             </span>
                           )}
                           <span className="text-[10px] text-muted-foreground/40 font-mono">
-                            {timeAgo(pr.updated_at)}
+                            <TimeAgo date={pr.created_at} />
                           </span>
                         </div>
                       </Link>

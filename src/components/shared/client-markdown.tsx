@@ -7,6 +7,20 @@ import rehypeRaw from "rehype-raw";
 import { cn } from "@/lib/utils";
 import type { Highlighter } from "shiki";
 
+/** Convert @username in markdown source to links (skip inside code fences/backticks) */
+function linkifyMentionsMd(md: string): string {
+  // Split out code fences and inline code so we don't touch them
+  const parts = md.split(/(```[\s\S]*?```|`[^`]+`)/g);
+  for (let i = 0; i < parts.length; i += 2) {
+    parts[i] = parts[i].replace(
+      /(^|[^/\w[\]])@([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?)\b/g,
+      (_m, prefix, username) =>
+        `${prefix}[@${username}](/users/${username})`
+    );
+  }
+  return parts.join("");
+}
+
 // Singleton highlighter for client-side code highlighting
 let highlighterInstance: Highlighter | null = null;
 let highlighterPromise: Promise<Highlighter> | null = null;
@@ -124,9 +138,20 @@ export function ClientMarkdown({
             if (hasLang) return <>{children}</>;
             return <pre>{children}</pre>;
           },
+          a({ href, children, ...rest }) {
+            if (href?.startsWith("/users/")) {
+              return (
+                <a href={href} className="ghmd-mention" {...rest}>
+                  <svg className="ghmd-mention-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M10.561 8.073a6 6 0 0 1 3.432 5.142.75.75 0 1 1-1.498.07 4.5 4.5 0 0 0-8.99 0 .75.75 0 0 1-1.498-.07 6 6 0 0 1 3.431-5.142 3.999 3.999 0 1 1 5.123 0ZM10.5 5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z" /></svg>
+                  {children}
+                </a>
+              );
+            }
+            return <a href={href} {...rest}>{children}</a>;
+          },
         }}
       >
-        {content}
+        {linkifyMentionsMd(content)}
       </ReactMarkdown>
     </div>
   );

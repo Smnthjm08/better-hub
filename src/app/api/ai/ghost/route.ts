@@ -11,8 +11,33 @@ import { embedText } from "@/lib/mixedbread";
 import { rerankResults } from "@/lib/mixedbread";
 import { searchEmbeddings, type ContentType } from "@/lib/embedding-store";
 import { toAppUrl } from "@/lib/github-utils";
+import { getUserSettings } from "@/lib/user-settings-store";
 
 export const maxDuration = 300;
+
+// ─── Safe tool wrapper ──────────────────────────────────────────────────────
+// Wraps all tool execute functions with try/catch so a single tool failure
+// (e.g. GitHub 403, rate limit, network error) doesn't crash the entire stream.
+function withSafeTools(tools: Record<string, any>): Record<string, any> {
+  const wrapped: Record<string, any> = {};
+  for (const [name, t] of Object.entries(tools)) {
+    if (!t || typeof t !== "object") { wrapped[name] = t; continue; }
+    const origExecute = t.execute;
+    if (typeof origExecute !== "function") { wrapped[name] = t; continue; }
+    wrapped[name] = {
+      ...t,
+      execute: async (...args: any[]) => {
+        try {
+          return await origExecute(...args);
+        } catch (e: any) {
+          console.error(`[Ghost] tool "${name}" error:`, e.message);
+          return { error: e.message || `Tool "${name}" failed` };
+        }
+      },
+    };
+  }
+  return wrapped;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -372,6 +397,7 @@ function getGeneralTools(octokit: Octokit) {
           merge_method: mergeMethod || "merge",
         });
         return {
+          _clientAction: "refreshPage" as const,
           success: data.merged,
           message: data.message,
           sha: data.sha,
@@ -1467,7 +1493,8 @@ Reference the exact file name and line numbers shown above in your response. The
 function buildPrSystemPrompt(
   prContext: PRContext,
   inlineContexts?: InlineContext[],
-  activeFile?: string
+  activeFile?: string,
+  sandboxPrompt?: string
 ) {
   // Determine which files need full diffs (active file + files in inline contexts)
   const priorityFiles = new Set<string>();
@@ -1476,8 +1503,8 @@ function buildPrSystemPrompt(
     for (const ctx of inlineContexts) priorityFiles.add(ctx.filename);
   }
 
-  // Budget: keep total diff content under ~120K chars (~30K tokens) to leave room
-  const MAX_DIFF_CHARS = 120_000;
+  // Budget: keep total diff content under ~50K chars (~12K tokens) to leave room
+  const MAX_DIFF_CHARS = 50_000;
   let diffCharsUsed = 0;
 
   // 1. Build full diffs for priority files first
@@ -1539,6 +1566,7 @@ ${allDiffs || "(No file changes available)"}${fileListSection}
 - If asked about something not in the PR context, say so clearly.
 - If the user has attached a code snippet above, ALWAYS answer about that specific code. Never say you don't know which line they mean.
 - If you need to see a file that's listed but not shown above, use the **getFileContent** tool.
+- **NEVER stop mid-task.** If you need multiple tool calls to fulfill a request, keep going until you're done. Always provide a complete final response.
 - **IMPORTANT:** When linking to repos, PRs, issues, or users, ALWAYS use this app's URLs (e.g. \`${process.env.NEXT_PUBLIC_APP_URL || ""}/repos/{owner}/{repo}\`), NEVER use github.com URLs.
 
 ## PR Tools
@@ -1556,6 +1584,8 @@ When asked to make changes:
 
 Only use tools when the user explicitly asks you to make changes or commit something. For reviews and suggestions, just describe the changes in text.
 
+**For complex git operations** (cherry-pick, rebase, merge with conflicts, revert, bisect, squash, etc.), use the **sandbox tools** — startSandbox to clone the repo, then sandboxRun to execute git commands. NEVER say you can't do these operations.
+
 ## General Tools
 You also have general GitHub tools (search repos, star, fork, list issues/PRs, navigate, comment, labels, assign, request reviewers, create branches, etc.). Use them when the user asks for things beyond this PR.
 
@@ -1572,13 +1602,14 @@ This is very powerful — use it to answer almost any question about repos, user
 ## Semantic Search (USE FIRST)
 **IMPORTANT:** When the user asks to find, list, or search for PRs/issues by topic or description (e.g. "find PRs about X", "list all PRs regarding Y", "any issues related to Z"), ALWAYS call **semanticSearch** FIRST before trying GitHub API tools. semanticSearch does natural language search across all content the user has previously viewed — it understands meaning, not just keywords. Only fall back to GitHub search/list tools if semanticSearch returns empty results.
 
-${SANDBOX_PROMPT}`;
+${sandboxPrompt || ""}`;
 }
 
 function buildIssueSystemPrompt(
   issueContext: IssueContext,
   defaultBranch: string,
-  inlineContexts?: InlineContext[]
+  inlineContexts?: InlineContext[],
+  sandboxPrompt?: string
 ) {
   const branchName = `fix/issue-${issueContext.issueNumber}`;
   const commentsFormatted = issueContext.comments
@@ -1607,6 +1638,7 @@ ${commentsFormatted ? `### Comments\n${commentsFormatted}` : ""}
 - When suggesting fixes, show the specific code change.
 - If asked about something not in the issue context, say so clearly.
 - If the user has attached a code snippet above, ALWAYS answer about that specific code. Never say you don't know which line they mean.
+- **NEVER stop mid-task.** If you need multiple tool calls to fulfill a request, keep going until you're done. Always provide a complete final response.
 - **IMPORTANT:** When linking to repos, PRs, issues, or users, ALWAYS use this app's URLs (e.g. \`${process.env.NEXT_PUBLIC_APP_URL || ""}/repos/{owner}/{repo}\`), NEVER use github.com URLs.
 
 ## Issue Tools
@@ -1623,6 +1655,8 @@ When asked to make changes or fix the issue:
 
 Only use tools when the user explicitly asks you to make changes, fix something, or create a PR. For analysis and suggestions, just describe the changes in text.
 
+**For complex git operations** (cherry-pick, rebase, merge with conflicts, revert, bisect, squash, etc.), use the **sandbox tools** — startSandbox to clone the repo, then sandboxRun to execute git commands. NEVER say you can't do these operations.
+
 ## General Tools
 You also have general GitHub tools (search repos, star, fork, list issues/PRs, navigate, comment, labels, assign, create branches, etc.). Use them when the user asks for things beyond this issue.
 
@@ -1634,13 +1668,14 @@ For any read-only query not covered by a specific tool, use queryGitHub to make 
 ## Semantic Search (USE FIRST)
 **IMPORTANT:** When the user asks to find, list, or search for PRs/issues by topic or description, ALWAYS call **semanticSearch** FIRST. It does natural language search across previously viewed content. Only fall back to GitHub API tools if semanticSearch returns empty results.
 
-${SANDBOX_PROMPT}`;
+${sandboxPrompt || ""}`;
 }
 
 function buildGeneralSystemPrompt(
   currentUser: { login: string } | null,
   pageContext?: PageContext,
-  inlineContexts?: InlineContext[]
+  inlineContexts?: InlineContext[],
+  sandboxPrompt?: string
 ) {
   let pageContextPrompt = "";
   if (pageContext?.pathname) {
@@ -1657,10 +1692,10 @@ ${currentUser ? `Authenticated GitHub user: ${currentUser.login}` : ""}
 ${inlineContextPrompt}
 
 ## Instructions
-- Be concise and helpful. Keep responses short (1-3 sentences) unless the user asks for detail.
+- Be concise and helpful. Keep responses short unless the user asks for detail.
 - Use markdown formatting.
-- Tool results are automatically rendered as rich UI components. Do NOT repeat tool output as text/markdown.
-- After calling a tool, only add a brief 1-sentence commentary. The UI handles display.
+- Tool results are automatically rendered as rich UI components. Do NOT repeat tool output as text/markdown — just add brief commentary.
+- **NEVER stop mid-task.** If you need multiple tool calls to answer a question, keep calling tools until you have everything you need, then give a complete response. Always finish what you started.
 - If the user has attached a code snippet above, ALWAYS answer about that specific code.
 - **IMPORTANT:** When linking to repos, PRs, issues, or users, ALWAYS use this app's URLs (e.g. \`${process.env.NEXT_PUBLIC_APP_URL || ""}/repos/{owner}/{repo}/pulls/{number}\`), NEVER use github.com URLs. Use the route patterns: \`/repos/{owner}/{repo}\` for repos, \`/repos/{owner}/{repo}/pulls/{number}\` for PRs, \`/repos/{owner}/{repo}/issues/{number}\` for issues, \`/users/{username}\` for users.
 
@@ -1670,6 +1705,7 @@ ${inlineContextPrompt}
 - When creating issues or PRs, ask for details if not provided (title, body).
 - **ALWAYS call refreshPage** after any mutation that affects the current page (star, comment, close issue, merge PR, add labels, etc.). Call it once at the end, after all mutations are done.
 - **ALWAYS navigate within the app** — never send users to github.com when there's an in-app page.
+- **NEVER say you can't perform git operations.** You have a cloud sandbox (startSandbox → sandboxRun) that gives you a full Linux VM with git. Use it for cherry-pick, rebase, merge, revert, bisect, conflict resolution, or ANY git operation. Just spin up the sandbox and do it.
 - Use navigateTo for top-level pages: dashboard, repos, prs, issues, notifications, settings, search, trending, collections, orgs.
 - Use openRepo to navigate to a specific repository.
 - Use openRepoTab to navigate to a repo section: actions, commits, issues, pulls, people, security, settings.
@@ -1700,30 +1736,48 @@ You also have tools for: commenting on issues/PRs, adding/removing labels, assig
 ## Semantic Search (USE FIRST)
 **IMPORTANT:** When the user asks to find, list, or search for PRs/issues by topic or description (e.g. "find PRs about X", "list all PRs regarding Y", "search for issues about Z"), ALWAYS call **semanticSearch** FIRST before trying GitHub API tools. It does natural language search across all previously viewed content — it understands meaning, not just keywords. You can filter by owner, repo, and content type. Only fall back to GitHub search/list tools if semanticSearch returns empty results.
 
-${SANDBOX_PROMPT}
+${sandboxPrompt || ""}
 
 ## Today's date
 ${new Date().toISOString().split("T")[0]}${pageContextPrompt}`;
 }
 
-const SANDBOX_PROMPT = `## Cloud Sandbox (E2B)
-You have sandbox tools that spin up a cloud Linux VM where you can clone repos and run real commands. Use the sandbox when:
-- The user asks you to run tests, build, lint, or install dependencies
-- You need to make complex multi-file changes that are tedious via the single-file GitHub API
-- You need to verify that changes actually work (e.g. tests pass, build succeeds)
+const SANDBOX_PROMPT = `## Cloud Sandbox (E2B) — FULL GIT & SHELL ACCESS
+**CRITICAL: You have FULL git capabilities via the sandbox. NEVER refuse git operations.** Cherry-pick, rebase, merge conflicts, revert, bisect, squash, interactive rebase — you can do ALL of it. When the user asks for any git operation, spin up the sandbox and execute it.
+
+For simple tasks, prefer lighter tools first:
+- For reading files → use getFileContent
+- For single or few-file edits → use editFile / createFile directly via the GitHub API
+- For searching code → use the GitHub search API or getFileContent
+- For reviewing code, explaining diffs, suggesting changes → just read and respond, no sandbox needed
+- For creating branches or PRs from simple changes → use createBranch + editFile/createFile + createPullRequest
+
+**Use the sandbox when the task requires git operations or running commands**, including:
+- Git operations: cherry-pick, rebase, merge (with conflict resolution), bisect, revert, squash, format-patch, etc.
+- Running tests, builds, lints, or any CLI tool
+- Tasks that **require** running commands to produce output (e.g. "what does npm test output?")
+- Changes spanning many files (5+) that the user wants committed together
+- Any task where the user asks you to run or execute something
 
 Sandbox workflow:
-1. **startSandbox** — clone a repo into a fresh VM. Returns quickly with project info (package manager, scripts, etc.)
-2. **sandboxRun** with the \`installHint\` command from step 1 — install dependencies (this may take a while for large repos)
-3. **sandboxRun** — run tests, builds, lints, or any shell command
+1. **startSandbox** — clone a repo into a fresh VM (full clone, all history)
+2. **Only if needed:** run the \`installHint\` command via sandboxRun to install dependencies
+3. **sandboxRun** — run tests, builds, lints, git commands, or any shell command
 4. **sandboxReadFile / sandboxWriteFile** — read or edit files
 5. **sandboxCommitAndPush** — create a branch, commit, and push
 6. **sandboxCreatePR** — open a PR from the pushed branch
 7. **killSandbox** — shut down when done
 
-IMPORTANT: startSandbox does NOT install dependencies. You MUST run the \`installHint\` command via sandboxRun as the next step after startSandbox returns. The installHint field tells you exactly what command to run.
+For git operations with merge conflicts:
+1. Start sandbox and clone the repo
+2. Run the git command (cherry-pick, merge, rebase, etc.)
+3. If conflicts occur, use sandboxRun to see conflicting files (git status, git diff)
+4. Use sandboxReadFile to read the conflicted files
+5. Use sandboxWriteFile to write the resolved version
+6. Run \`git add <file>\` and \`git <command> --continue\` to finish
+7. Push and create a PR
 
-The sandbox costs resources, so only start one when actually needed. For simple single-file edits, prefer the direct GitHub API tools.`;
+IMPORTANT: Do NOT install dependencies if you're only doing git operations. Installing deps is slow and unnecessary for pure git work. Only install when you actually need to run tests, builds, or code that depends on node_modules.`;
 
 // ─── Sandbox Tools ──────────────────────────────────────────────────────────
 
@@ -1778,8 +1832,10 @@ The sandbox has git, node, npm, python, and common dev tools.
         // ── Phase 2: Clone repo ──
         console.log("[Sandbox] Cloning", `${owner}/${repo}...`);
         try {
+          // Configure git and set up credential helper so all subsequent
+          // git operations (fetch, push, cherry-pick, rebase) have auth
           await sandbox.commands.run(
-            'git config --global user.name "Ghost" && git config --global user.email "ghost@better-github.app"'
+            `git config --global user.name "Ghost" && git config --global user.email "ghost@better-github.app" && git config --global credential.helper store && echo "https://x-access-token:${githubToken}@github.com" > ~/.git-credentials`
           );
 
           repoPath = `/home/user/${repo}`;
@@ -1788,8 +1844,8 @@ The sandbox has git, node, npm, python, and common dev tools.
 
           const cloneUrl = `https://x-access-token:${githubToken}@github.com/${owner}/${repo}.git`;
           const cloneCmd = branch
-            ? `git clone --branch ${branch} --depth 1 ${cloneUrl} ${repoPath}`
-            : `git clone --depth 1 ${cloneUrl} ${repoPath}`;
+            ? `git clone --branch ${branch} ${cloneUrl} ${repoPath}`
+            : `git clone ${cloneUrl} ${repoPath}`;
           const cloneResult = await sandbox.commands.run(cloneCmd, {
             timeoutMs: 60_000,
           });
@@ -1920,7 +1976,12 @@ The sandbox has git, node, npm, python, and common dev tools.
             result.stderr.length > maxLen
               ? result.stderr.slice(0, maxLen) + "\n...(truncated)"
               : result.stderr;
-          return { stdout, stderr, exitCode: result.exitCode };
+
+          if (result.exitCode !== 0) {
+            const errMsg = stderr.trim() || stdout.trim() || `exit code ${result.exitCode}`;
+            return { error: errMsg, exitCode: result.exitCode, stdout, stderr };
+          }
+          return { success: true, stdout, stderr, exitCode: 0 };
         } catch (e: any) {
           return { error: e.message || "Command failed" };
         }
@@ -2175,6 +2236,7 @@ export async function POST(req: Request) {
 
   const generalTools = getGeneralTools(octokit);
   const sandboxTools = githubToken ? getSandboxTools(octokit, githubToken) : {};
+  const sandboxPrompt = githubToken ? SANDBOX_PROMPT : undefined;
   const searchTools = userId ? getSemanticSearchTool(userId) : {};
 
   // Auto-detect PR/issue context from pathname when not explicitly provided
@@ -2256,8 +2318,8 @@ export async function POST(req: Request) {
   if (resolvedPrContext) {
     // PR mode
     const prTools = getPrTools(octokit, resolvedPrContext);
-    systemPrompt = buildPrSystemPrompt(resolvedPrContext, inlineContexts, activeFile);
-    tools = { ...prTools, ...generalTools, ...sandboxTools, ...searchTools };
+    systemPrompt = buildPrSystemPrompt(resolvedPrContext, inlineContexts, activeFile, sandboxPrompt);
+    tools = withSafeTools({ ...prTools, ...generalTools, ...sandboxTools, ...searchTools });
   } else if (resolvedIssueContext) {
     // Issue mode
     let defaultBranch = "main";
@@ -2272,8 +2334,8 @@ export async function POST(req: Request) {
     }
 
     const issueTools = getIssueTools(octokit, resolvedIssueContext, defaultBranch);
-    systemPrompt = buildIssueSystemPrompt(resolvedIssueContext, defaultBranch, inlineContexts);
-    tools = { ...issueTools, ...generalTools, ...sandboxTools, ...searchTools };
+    systemPrompt = buildIssueSystemPrompt(resolvedIssueContext, defaultBranch, inlineContexts, sandboxPrompt);
+    tools = withSafeTools({ ...issueTools, ...generalTools, ...sandboxTools, ...searchTools });
   } else {
     // General mode
     let currentUser: { login: string } | null = null;
@@ -2284,13 +2346,13 @@ export async function POST(req: Request) {
       // continue without user context
     }
 
-    systemPrompt = buildGeneralSystemPrompt(currentUser, pageContext, inlineContexts);
+    systemPrompt = buildGeneralSystemPrompt(currentUser, pageContext, inlineContexts, sandboxPrompt);
 
     // Add getFileContent tool when we can infer a repo from the current page
     const repoMatch = pageContext?.pathname?.match(/^\/repos\/([^/]+)\/([^/]+)/);
     if (repoMatch) {
       const [, owner, repo] = repoMatch;
-      tools = {
+      tools = withSafeTools({
         ...generalTools,
         ...sandboxTools,
         ...searchTools,
@@ -2302,39 +2364,58 @@ export async function POST(req: Request) {
             ref: z.string().optional().describe("Branch or commit SHA (defaults to the repo's default branch)"),
           }),
           execute: async ({ path, ref }) => {
-            try {
-              const { data } = await octokit.repos.getContent({
-                owner,
-                repo,
-                path,
-                ...(ref ? { ref } : {}),
-              });
-              if (Array.isArray(data) || data.type !== "file") {
-                return { error: "Not a file" };
-              }
-              const content = Buffer.from(
-                (data as any).content,
-                "base64"
-              ).toString("utf-8");
-              return { path, content };
-            } catch (e: any) {
-              return { error: e.message || "Failed to read file" };
+            const { data } = await octokit.repos.getContent({
+              owner,
+              repo,
+              path,
+              ...(ref ? { ref } : {}),
+            });
+            if (Array.isArray(data) || data.type !== "file") {
+              return { error: "Not a file" };
             }
+            const content = Buffer.from(
+              (data as any).content,
+              "base64"
+            ).toString("utf-8");
+            return { path, content };
           },
         }),
-      };
+      });
     } else {
-      tools = { ...generalTools, ...sandboxTools, ...searchTools };
+      tools = withSafeTools({ ...generalTools, ...sandboxTools, ...searchTools });
     }
   }
 
-  const result = streamText({
-    model: createOpenRouter({ apiKey: process.env.OPEN_ROUTER_API_KEY! })("anthropic/claude-sonnet-4"),
-    system: systemPrompt,
-    messages: await convertToModelMessages(messages),
-    tools,
-    stopWhen: stepCountIs(10),
-  });
+  let modelId = process.env.GHOST_MODEL || "moonshotai/kimi-k2.5";
+  let apiKey = process.env.OPEN_ROUTER_API_KEY!;
 
-  return result.toUIMessageStreamResponse();
+  if (userId) {
+    const settings = getUserSettings(userId);
+    if (settings.ghostModel && settings.ghostModel !== "openrouter/auto") modelId = settings.ghostModel;
+    if (settings.useOwnApiKey && settings.openrouterApiKey) apiKey = settings.openrouterApiKey;
+  }
+
+  try {
+    const result = streamText({
+      model: createOpenRouter({ apiKey })(modelId),
+      system: systemPrompt,
+      messages: await convertToModelMessages(messages),
+      tools,
+      maxRetries: 4,
+      stopWhen: stepCountIs(50),
+      onError({ error }) {
+        console.error("[Ghost] mid-stream error:", error);
+      },
+    });
+
+    return result.toUIMessageStreamResponse({
+      sendReasoning: true,
+    });
+  } catch (e: any) {
+    console.error("[Ghost] streamText error:", e);
+    return new Response(
+      JSON.stringify({ error: e.message || "AI request failed" }),
+      { status: 502, headers: { "Content-Type": "application/json" } }
+    );
+  }
 }

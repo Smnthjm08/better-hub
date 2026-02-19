@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { fetchCommitsByDate } from "@/app/(app)/repos/[owner]/[repo]/commits/actions";
 
 type Commit = {
@@ -222,7 +223,7 @@ export function CommitsList({
                         commit.commit.author?.name ?? "Unknown"
                       )}
                       {commit.commit.author?.date && (
-                        <> · {timeAgo(commit.commit.author.date)}</>
+                        <> · <TimeAgo date={commit.commit.author.date} /></>
                       )}
                     </p>
                   </div>

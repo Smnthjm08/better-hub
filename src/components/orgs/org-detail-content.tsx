@@ -16,7 +16,8 @@ import {
   Star,
   Users,
 } from "lucide-react";
-import { cn, formatNumber, timeAgo } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 export interface OrgDetails {
   login: string;
@@ -342,7 +343,7 @@ export function OrgDetailContent({ org, repos }: { org: OrgDetails; repos: OrgRe
                   )}
                   {repo.updated_at && (
                     <span className="ml-auto font-mono text-muted-foreground/50">
-                      {timeAgo(repo.updated_at)}
+                      <TimeAgo date={repo.updated_at} />
                     </span>
                   )}
                 </div>

@@ -145,6 +145,34 @@ function addHeadingAnchors(html: string): string {
   );
 }
 
+/** Convert @username mentions (outside of code/links) to profile links */
+function linkifyMentions(html: string): string {
+  // Split on tags to avoid replacing inside <a>, <code>, <pre> content
+  const parts = html.split(/(<[^>]+>)/);
+  let inCode = 0;
+  let inLink = 0;
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.startsWith("<")) {
+      const lower = part.toLowerCase();
+      if (lower.startsWith("<code") || lower.startsWith("<pre")) inCode++;
+      else if (lower.startsWith("</code") || lower.startsWith("</pre")) inCode--;
+      else if (lower.startsWith("<a ") || lower.startsWith("<a>")) inLink++;
+      else if (lower.startsWith("</a")) inLink--;
+      continue;
+    }
+    if (inCode > 0 || inLink > 0) continue;
+    // Match @username (GitHub usernames: alphanumeric + hyphens, 1-39 chars)
+    parts[i] = part.replace(
+      /(^|[^/\w])@([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?)\b/g,
+      (_m, prefix, username) =>
+        `${prefix}<a href="/users/${username}" class="ghmd-mention"><svg class="ghmd-mention-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M10.561 8.073a6 6 0 0 1 3.432 5.142.75.75 0 1 1-1.498.07 4.5 4.5 0 0 0-8.99 0 .75.75 0 0 1-1.498-.07 6 6 0 0 1 3.431-5.142 3.999 3.999 0 1 1 5.123 0ZM10.5 5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z"/></svg>@${username}</a>`
+    );
+  }
+  return parts.join("");
+}
+
 export async function renderMarkdownToHtml(
   content: string,
   repoContext?: RepoContext
@@ -196,6 +224,8 @@ export async function renderMarkdownToHtml(
     /<a\s+href="(https?:\/\/[^"]+)"/gi,
     '<a href="$1" target="_blank" rel="noopener noreferrer"'
   );
+
+  html = linkifyMentions(html);
 
   return html;
 }

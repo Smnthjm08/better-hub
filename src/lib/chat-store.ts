@@ -48,6 +48,20 @@ function ensureSchema(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation
       ON chat_messages (conversation_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS ghost_tabs (
+      user_id TEXT NOT NULL,
+      tab_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (user_id, tab_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS ghost_tab_state (
+      user_id TEXT PRIMARY KEY,
+      active_tab_id TEXT NOT NULL,
+      counter INTEGER NOT NULL DEFAULT 1
+    );
   `);
 
   globalForChatDb.__chatSchemaReady = true;
@@ -234,4 +248,152 @@ export function listConversations(
         .all(userId) as ConversationRow[]);
 
   return rows.map(rowToConversation);
+}
+
+// ─── Ghost Tabs ────────────────────────────────────────────────────────────
+
+export interface GhostTab {
+  id: string;
+  label: string;
+}
+
+export interface GhostTabState {
+  tabs: GhostTab[];
+  activeTabId: string;
+  counter: number;
+}
+
+interface GhostTabRow {
+  user_id: string;
+  tab_id: string;
+  label: string;
+  position: number;
+}
+
+interface GhostTabStateRow {
+  user_id: string;
+  active_tab_id: string;
+  counter: number;
+}
+
+function generateTabId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function createDefaultGhostTabState(): { tabs: GhostTab[]; activeTabId: string; counter: number } {
+  const id = generateTabId();
+  return { tabs: [{ id, label: "Thread 1" }], activeTabId: id, counter: 1 };
+}
+
+export function getGhostTabState(userId: string): GhostTabState {
+  const db = getDb();
+
+  const tabs = db
+    .prepare(`SELECT * FROM ghost_tabs WHERE user_id = ? ORDER BY position ASC`)
+    .all(userId) as GhostTabRow[];
+
+  const stateRow = db
+    .prepare(`SELECT * FROM ghost_tab_state WHERE user_id = ?`)
+    .get(userId) as GhostTabStateRow | undefined;
+
+  if (tabs.length === 0 || !stateRow) {
+    // Initialize default state for new users
+    const defaults = createDefaultGhostTabState();
+    const insertTab = db.prepare(
+      `INSERT OR REPLACE INTO ghost_tabs (user_id, tab_id, label, position) VALUES (?, ?, ?, ?)`
+    );
+    const insertState = db.prepare(
+      `INSERT OR REPLACE INTO ghost_tab_state (user_id, active_tab_id, counter) VALUES (?, ?, ?)`
+    );
+    db.transaction(() => {
+      insertTab.run(userId, defaults.tabs[0].id, defaults.tabs[0].label, 0);
+      insertState.run(userId, defaults.activeTabId, defaults.counter);
+    })();
+    return defaults;
+  }
+
+  return {
+    tabs: tabs.map((t) => ({ id: t.tab_id, label: t.label })),
+    activeTabId: stateRow.active_tab_id,
+    counter: stateRow.counter,
+  };
+}
+
+export function addGhostTab(
+  userId: string,
+  tabId: string,
+  label: string,
+  counter: number
+): void {
+  const db = getDb();
+
+  // Get max position
+  const maxPos = db
+    .prepare(`SELECT MAX(position) as mp FROM ghost_tabs WHERE user_id = ?`)
+    .get(userId) as { mp: number | null };
+  const position = (maxPos?.mp ?? -1) + 1;
+
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO ghost_tabs (user_id, tab_id, label, position) VALUES (?, ?, ?, ?)`
+    ).run(userId, tabId, label, position);
+    db.prepare(
+      `INSERT OR REPLACE INTO ghost_tab_state (user_id, active_tab_id, counter) VALUES (?, ?, ?)`
+    ).run(userId, tabId, counter);
+  })();
+}
+
+export function closeGhostTab(
+  userId: string,
+  tabId: string,
+  newDefault?: { id: string; label: string; counter: number }
+): void {
+  const db = getDb();
+
+  const tabs = db
+    .prepare(`SELECT * FROM ghost_tabs WHERE user_id = ? ORDER BY position ASC`)
+    .all(userId) as GhostTabRow[];
+
+  const stateRow = db
+    .prepare(`SELECT * FROM ghost_tab_state WHERE user_id = ?`)
+    .get(userId) as GhostTabStateRow | undefined;
+
+  const remaining = tabs.filter((t) => t.tab_id !== tabId);
+
+  if (remaining.length === 0) {
+    // Reset to default using client-provided details (or generate fallback)
+    const def = newDefault ?? { id: generateTabId(), label: "Thread 1", counter: 1 };
+    db.transaction(() => {
+      db.prepare(`DELETE FROM ghost_tabs WHERE user_id = ?`).run(userId);
+      db.prepare(
+        `INSERT INTO ghost_tabs (user_id, tab_id, label, position) VALUES (?, ?, ?, ?)`
+      ).run(userId, def.id, def.label, 0);
+      db.prepare(
+        `INSERT OR REPLACE INTO ghost_tab_state (user_id, active_tab_id, counter) VALUES (?, ?, ?)`
+      ).run(userId, def.id, def.counter);
+    })();
+    return;
+  }
+
+  // Determine new active tab if the closed one was active
+  let newActiveId = stateRow?.active_tab_id ?? remaining[0].tab_id;
+  if (newActiveId === tabId) {
+    const closedIdx = tabs.findIndex((t) => t.tab_id === tabId);
+    const newIdx = Math.min(closedIdx, remaining.length - 1);
+    newActiveId = remaining[newIdx].tab_id;
+  }
+
+  db.transaction(() => {
+    db.prepare(`DELETE FROM ghost_tabs WHERE user_id = ? AND tab_id = ?`).run(userId, tabId);
+    db.prepare(
+      `UPDATE ghost_tab_state SET active_tab_id = ? WHERE user_id = ?`
+    ).run(newActiveId, userId);
+  })();
+}
+
+export function setActiveGhostTab(userId: string, tabId: string): void {
+  const db = getDb();
+  db.prepare(
+    `UPDATE ghost_tab_state SET active_tab_id = ? WHERE user_id = ?`
+  ).run(tabId, userId);
 }

@@ -16,8 +16,11 @@ import {
   Link as LinkIcon,
   HardDrive,
 } from "lucide-react";
-import { formatNumber, timeAgo } from "@/lib/utils";
+import { formatNumber } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { formatBytes } from "@/lib/github-utils";
+import { SidebarBranchSwitcher } from "@/components/repo/sidebar-branch-switcher";
+import { StarButton } from "@/components/repo/star-button";
 
 interface Contributor {
   login: string;
@@ -58,6 +61,8 @@ interface RepoSidebarProps {
   contributors: Contributor[];
   contributorsTotalCount: number;
   latestCommit: LatestCommit | null;
+  branches: { name: string }[];
+  isStarred: boolean;
 }
 
 export function RepoSidebar({
@@ -85,6 +90,8 @@ export function RepoSidebar({
   contributors,
   contributorsTotalCount,
   latestCommit,
+  branches,
+  isStarred,
 }: RepoSidebarProps) {
   const badges = [
     isPrivate
@@ -107,16 +114,7 @@ export function RepoSidebar({
             height={160}
             className="w-32 aspect-square rounded-sm border border-border"
           />
-          <div className="text-sm font-mono">
-            <Link
-              href={ownerType === "Organization" ? `/orgs/${owner}` : `/users/${owner}`}
-              className="text-muted-foreground/60 hover:text-foreground transition-colors"
-            >
-              {owner}
-            </Link>
-            <span className="text-muted-foreground/40 mx-0.5">/</span>
-            <span className="font-medium text-foreground">{repoName}</span>
-          </div>
+          <span className="text-sm font-medium text-foreground">{repoName}</span>
         </div>
 
         {/* Description + Badges */}
@@ -159,7 +157,7 @@ export function RepoSidebar({
             </span>
             <Link
               href={`/repos/${owner}/${repoName}/commits`}
-              className="group flex items-start gap-2 p-2 -mx-2 rounded-md hover:bg-zinc-100/50 dark:hover:bg-zinc-800/30 transition-colors"
+              className="group flex items-start gap-2 p-2 -mx-2 rounded-md hover:bg-zinc-100/50 dark:hover:bg-zinc-800/40 transition-colors"
             >
               {latestCommit.author?.avatarUrl ? (
                 <Image
@@ -181,7 +179,7 @@ export function RepoSidebar({
                     {latestCommit.author?.login ?? "unknown"}
                   </span>
                   <span className="text-[10px] text-muted-foreground/40">
-                    {timeAgo(latestCommit.date)}
+                    <TimeAgo date={latestCommit.date} />
                   </span>
                 </div>
               </div>
@@ -196,7 +194,7 @@ export function RepoSidebar({
               {topics.map((topic) => (
                 <span
                   key={topic}
-                  className="text-[10px] font-mono px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800/60 text-muted-foreground rounded-full shrink-0"
+                  className="text-[10px] font-mono px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800/80 text-muted-foreground rounded-full shrink-0"
                 >
                   {topic}
                 </span>
@@ -244,11 +242,12 @@ export function RepoSidebar({
 
         {/* Actions */}
         <div className="flex flex-col gap-2">
+          <StarButton owner={owner} repo={repoName} starred={isStarred} starCount={stars} />
           <a
             href={htmlUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1.5 text-[11px] font-mono py-1.5 border border-border text-muted-foreground hover:text-foreground hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+            className="flex items-center justify-center gap-1.5 text-[11px] font-mono py-1.5 border border-border text-muted-foreground hover:text-foreground hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
           >
             <ExternalLink className="w-3 h-3" />
             Open on GitHub
@@ -257,7 +256,7 @@ export function RepoSidebar({
             href={`${htmlUrl}/fork`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1.5 text-[11px] font-mono py-1.5 border border-border text-muted-foreground hover:text-foreground hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+            className="flex items-center justify-center gap-1.5 text-[11px] font-mono py-1.5 border border-border text-muted-foreground hover:text-foreground hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
           >
             <GitFork className="w-3 h-3" />
             Fork
@@ -294,14 +293,18 @@ export function RepoSidebar({
                 <GitBranch className="w-3 h-3" />
                 Branch
               </span>
-              <span className="font-mono text-muted-foreground">
-                {defaultBranch}
-              </span>
+              <SidebarBranchSwitcher
+                owner={owner}
+                repo={repoName}
+                currentBranch={defaultBranch}
+                branches={branches}
+                defaultBranch={defaultBranch}
+              />
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground/70">Last push</span>
               <span className="font-mono text-muted-foreground">
-                {timeAgo(pushedAt)}
+                <TimeAgo date={pushedAt} />
               </span>
             </div>
             {size > 0 && (
@@ -392,10 +395,7 @@ export function RepoSidebar({
                 {b.label}
               </span>
             ))}
-            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
-              <Star className="w-3 h-3" />
-              {formatNumber(stars)}
-            </span>
+            <StarButton owner={owner} repo={repoName} starred={isStarred} starCount={stars} />
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
               <GitFork className="w-3 h-3" />
               {formatNumber(forks)}

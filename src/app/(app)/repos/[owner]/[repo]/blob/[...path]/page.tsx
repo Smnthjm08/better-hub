@@ -1,7 +1,8 @@
 import { getFileContent, getRepoBranches, getRepoTags } from "@/lib/github";
-import { parseRefAndPath, formatBytes, getLanguageFromFilename } from "@/lib/github-utils";
+import { parseRefAndPath, formatBytes } from "@/lib/github-utils";
 import { CodeViewer } from "@/components/repo/code-viewer";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
+import { MarkdownBlobView } from "@/components/repo/markdown-blob-view";
 import { File, Download } from "lucide-react";
 
 const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown", "mdown", "mkd"]);
@@ -107,29 +108,22 @@ export default async function BlobPage({
   const isMarkdown = MARKDOWN_EXTENSIONS.has(ext);
   const fileDir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 
-  return (
-    <div>
-      <div className="mb-2 flex items-center gap-3">
-        <span className="text-[11px] font-mono text-muted-foreground/60">
-          {formatBytes(file.size)}
-        </span>
-        <span className="text-[11px] font-mono text-muted-foreground/60">
-          {file.content.split("\n").length} lines
-        </span>
-        <span className="text-[11px] font-mono text-muted-foreground/60">
-          {getLanguageFromFilename(filename)}
-        </span>
-      </div>
-
-      {isMarkdown ? (
-        <div className="border border-border">
-          <div className="px-6 py-5">
-            <MarkdownRenderer content={file.content} repoContext={{ owner, repo, branch: ref, dir: fileDir }} />
+  if (isMarkdown) {
+    return (
+      <MarkdownBlobView
+        rawView={
+          <CodeViewer content={file.content} filename={filename} filePath={path} fileSize={file.size} />
+        }
+        previewView={
+          <div className="border border-border rounded-md overflow-hidden">
+            <div className="px-6 py-5">
+              <MarkdownRenderer content={file.content} repoContext={{ owner, repo, branch: ref, dir: fileDir }} />
+            </div>
           </div>
-        </div>
-      ) : (
-        <CodeViewer content={file.content} filename={filename} />
-      )}
-    </div>
-  );
+        }
+      />
+    );
+  }
+
+  return <CodeViewer content={file.content} filename={filename} filePath={path} fileSize={file.size} />;
 }

@@ -47,6 +47,8 @@ interface MarkdownEditorProps {
   className?: string;
   /** Conversation participants for @mention autocomplete */
   participants?: MentionUser[];
+  /** Repo owner (org or user) to prioritize in @mention search */
+  owner?: string;
 }
 
 export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
@@ -61,6 +63,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
       onKeyDown,
       className,
       participants = [],
+      owner = "",
     },
     ref
   ) {
@@ -72,8 +75,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
     const participantsRef = useRef<MentionUser[]>(participants);
     participantsRef.current = participants;
 
+    const ownerRef = useRef(owner);
+    ownerRef.current = owner;
+
     const suggestionConfig = useMemo(
-      () => createSuggestionConfig(participantsRef),
+      () => createSuggestionConfig(participantsRef, ownerRef),
       []
     );
 

@@ -4,6 +4,7 @@ import { cache } from "react";
 import { auth } from "./auth";
 import {
   claimDueGithubSyncJobs,
+  deleteGithubCacheByPrefix,
   enqueueGithubSyncJob,
   getGithubCacheEntry,
   markGithubSyncJobFailed,
@@ -38,6 +39,7 @@ interface GitHubAuthContext {
   userId: string;
   token: string;
   octokit: Octokit;
+  forceRefresh: boolean;
 }
 
 type GitDataSyncJobType =
@@ -346,8 +348,9 @@ function buildOrgMembersCacheKey(org: string, perPage: number): string {
 }
 
 const getGitHubAuthContext = cache(async (): Promise<GitHubAuthContext | null> => {
+  const reqHeaders = await headers();
   const session = await auth.api.getSession({
-    headers: await headers(),
+    headers: reqHeaders,
   });
   if (!session) return null;
 
@@ -360,10 +363,18 @@ const getGitHubAuthContext = cache(async (): Promise<GitHubAuthContext | null> =
   const token = githubAccount?.accessToken;
   if (!token) return null;
 
+  const cacheControl = reqHeaders.get("cache-control") ?? "";
+  const pragma = reqHeaders.get("pragma") ?? "";
+  const forceRefresh =
+    cacheControl.includes("no-cache") ||
+    cacheControl.includes("max-age=0") ||
+    pragma.includes("no-cache");
+
   return {
     userId: session.user.id,
     token,
     octokit: new Octokit({ auth: token }),
+    forceRefresh,
   };
 });
 
@@ -438,12 +449,20 @@ async function fetchRepoBranchesFromGitHub(
   owner: string,
   repo: string
 ) {
-  const { data } = await octokit.repos.listBranches({
-    owner,
-    repo,
-    per_page: 100,
-  });
-  return data;
+  const branches: Awaited<ReturnType<typeof octokit.repos.listBranches>>["data"] = [];
+  let page = 1;
+  while (true) {
+    const { data } = await octokit.repos.listBranches({
+      owner,
+      repo,
+      per_page: 100,
+      page,
+    });
+    branches.push(...data);
+    if (data.length < 100) break;
+    page++;
+  }
+  return branches;
 }
 
 async function fetchRepoTagsFromGitHub(octokit: Octokit, owner: string, repo: string) {
@@ -779,8 +798,52 @@ async function fetchRepoContributorsFromGitHub(
 }
 
 async function fetchUserProfileFromGitHub(octokit: Octokit, username: string) {
-  const { data } = await octokit.users.getByUsername({ username });
-  return data;
+  // Try direct user lookup first
+  try {
+    const { data } = await octokit.users.getByUsername({ username });
+    return data;
+  } catch {
+    // continue to fallbacks
+  }
+
+  // Try as a bot account (e.g. "copilot" → "copilot[bot]")
+  if (!username.endsWith("[bot]")) {
+    try {
+      const { data } = await octokit.users.getByUsername({
+        username: `${username.toLowerCase()}[bot]`,
+      });
+      return data;
+    } catch {
+      // continue
+    }
+  }
+
+  // Try resolving as a GitHub App
+  try {
+    const { data: app } = await octokit.request("GET /apps/{app_slug}", {
+      app_slug: username.toLowerCase(),
+    } as any);
+    return {
+      login: (app as any).slug ?? username,
+      name: (app as any).name ?? username,
+      avatar_url: (app as any).owner?.avatar_url ?? "",
+      html_url: (app as any).html_url ?? `https://github.com/apps/${username.toLowerCase()}`,
+      bio: (app as any).description ?? null,
+      blog: (app as any).external_url ?? null,
+      location: null,
+      company: null,
+      twitter_username: null,
+      public_repos: 0,
+      followers: 0,
+      following: 0,
+      created_at: (app as any).created_at ?? new Date().toISOString(),
+      type: "Bot",
+    } as any;
+  } catch {
+    // all lookups failed
+  }
+
+  return null;
 }
 
 async function fetchUserPublicReposFromGitHub(octokit: Octokit, username: string, perPage: number) {
@@ -1140,6 +1203,16 @@ async function readLocalFirstGitData<T>({
 }: LocalFirstGitReadOptions<T>): Promise<T> {
   if (!authCtx) return fallback;
 
+  if (authCtx.forceRefresh) {
+    try {
+      const data = await fetchRemote(authCtx.octokit);
+      upsertGithubCacheEntry(authCtx.userId, cacheKey, cacheType, data);
+      return data;
+    } catch {
+      // Fall through to cached data on error
+    }
+  }
+
   const cached = getGithubCacheEntry<T>(authCtx.userId, cacheKey);
   if (cached) {
     if (isStale(cached.syncedAt, ttlMs)) {
@@ -1359,6 +1432,17 @@ export async function getRepo(owner: string, repo: string) {
     jobPayload: { owner, repo },
     fetchRemote: (octokit) => fetchRepoFromGitHub(octokit, owner, repo),
   });
+}
+
+export async function checkIsStarred(owner: string, repo: string): Promise<boolean> {
+  const octokit = await getOctokit();
+  if (!octokit) return false;
+  const res = await octokit.request("GET /user/starred/{owner}/{repo}", {
+    owner,
+    repo,
+    request: { parseSuccessResponseBody: false },
+  }).catch(() => null);
+  return res?.status === 204;
 }
 
 export async function getRepoContents(
@@ -1750,6 +1834,54 @@ export async function getRepoIssues(
   });
 }
 
+export async function invalidateRepoPullRequestsCache(
+  owner: string,
+  repo: string
+) {
+  const authCtx = await getGitHubAuthContext();
+  if (!authCtx) return;
+  const prefix = `repo_pull_requests:${normalizeRepoKey(owner, repo)}`;
+  deleteGithubCacheByPrefix(authCtx.userId, prefix);
+}
+
+export async function invalidatePullRequestCache(
+  owner: string,
+  repo: string,
+  pullNumber: number
+) {
+  const authCtx = await getGitHubAuthContext();
+  if (!authCtx) return;
+  // Invalidate the PR detail + list caches
+  const key = normalizeRepoKey(owner, repo);
+  deleteGithubCacheByPrefix(authCtx.userId, `pull_request:${key}:${pullNumber}`);
+  deleteGithubCacheByPrefix(authCtx.userId, `pull_request_comments:${key}:${pullNumber}`);
+  deleteGithubCacheByPrefix(authCtx.userId, `pull_request_reviews:${key}:${pullNumber}`);
+  deleteGithubCacheByPrefix(authCtx.userId, `repo_pull_requests:${key}`);
+}
+
+export async function invalidateRepoIssuesCache(
+  owner: string,
+  repo: string
+) {
+  const authCtx = await getGitHubAuthContext();
+  if (!authCtx) return;
+  const prefix = `repo_issues:${normalizeRepoKey(owner, repo)}`;
+  deleteGithubCacheByPrefix(authCtx.userId, prefix);
+}
+
+export async function invalidateIssueCache(
+  owner: string,
+  repo: string,
+  issueNumber: number
+) {
+  const authCtx = await getGitHubAuthContext();
+  if (!authCtx) return;
+  const key = normalizeRepoKey(owner, repo);
+  deleteGithubCacheByPrefix(authCtx.userId, `issue:${key}:${issueNumber}`);
+  deleteGithubCacheByPrefix(authCtx.userId, `issue_comments:${key}:${issueNumber}`);
+  deleteGithubCacheByPrefix(authCtx.userId, `repo_issues:${key}`);
+}
+
 export async function getRepoPullRequests(
   owner: string,
   repo: string,
@@ -1776,29 +1908,141 @@ export async function enrichPRsWithStats(
   const octokit = await getOctokit();
   if (!octokit) return new Map<number, { additions: number; deletions: number; changed_files: number }>();
 
-  const results = await Promise.allSettled(
+  const results = await Promise.all(
     prs.map((pr) =>
-      octokit.pulls.get({ owner, repo, pull_number: pr.number }).then((r) => ({
-        number: pr.number,
-        additions: r.data.additions,
-        deletions: r.data.deletions,
-        changed_files: r.data.changed_files,
-      }))
+      octokit.pulls.get({ owner, repo, pull_number: pr.number }).then(
+        (r) => ({
+          number: pr.number,
+          additions: r.data.additions,
+          deletions: r.data.deletions,
+          changed_files: r.data.changed_files,
+        }),
+        () => null
+      )
     )
   );
 
   const map = new Map<number, { additions: number; deletions: number; changed_files: number }>();
   for (const result of results) {
-    if (result.status === "fulfilled") {
-      map.set(result.value.number, {
-        additions: result.value.additions,
-        deletions: result.value.deletions,
-        changed_files: result.value.changed_files,
+    if (result) {
+      map.set(result.number, {
+        additions: result.additions,
+        deletions: result.deletions,
+        changed_files: result.changed_files,
       });
     }
   }
   return map;
 }
+
+export interface CheckRun {
+  name: string;
+  state: "success" | "failure" | "pending" | "error" | "neutral" | "skipped";
+  url: string | null;
+  runId: number | null;
+}
+
+export interface CheckStatus {
+  state: "pending" | "success" | "failure" | "error";
+  total: number;
+  success: number;
+  failure: number;
+  pending: number;
+  checks: CheckRun[];
+}
+
+function normalizeCheckConclusion(
+  status: string,
+  conclusion: string | null
+): CheckRun["state"] {
+  if (status === "completed") {
+    if (conclusion === "success") return "success";
+    if (conclusion === "failure" || conclusion === "timed_out" || conclusion === "cancelled") return "failure";
+    if (conclusion === "skipped") return "skipped";
+    if (conclusion === "neutral") return "neutral";
+    if (conclusion === "action_required" || conclusion === "stale") return "pending";
+    return "failure";
+  }
+  return "pending";
+}
+
+async function fetchCheckStatusForRef(
+  octokit: Awaited<ReturnType<typeof getOctokit>>,
+  owner: string,
+  repo: string,
+  ref: string
+): Promise<CheckStatus | null> {
+  if (!octokit) return null;
+
+  const [commitStatuses, checkRuns] = await Promise.all([
+    octokit.repos.getCombinedStatusForRef({ owner, repo, ref }).catch(() => null),
+    octokit.checks.listForRef({ owner, repo, ref, per_page: 100 }).catch(() => null),
+  ]);
+
+  const checks: CheckRun[] = [];
+
+  if (commitStatuses?.data.statuses) {
+    for (const s of commitStatuses.data.statuses) {
+      checks.push({
+        name: s.context,
+        state: s.state === "success" ? "success" : s.state === "pending" ? "pending" : "failure",
+        url: s.target_url || null,
+        runId: null,
+      });
+    }
+  }
+
+  if (checkRuns?.data.check_runs) {
+    for (const cr of checkRuns.data.check_runs) {
+      const runIdMatch = cr.html_url?.match(/\/actions\/runs\/(\d+)/);
+      checks.push({
+        name: cr.name,
+        state: normalizeCheckConclusion(cr.status, cr.conclusion),
+        url: cr.html_url || (cr.details_url as string | null) || null,
+        runId: runIdMatch ? Number(runIdMatch[1]) : null,
+      });
+    }
+  }
+
+  if (checks.length === 0) return null;
+
+  const success = checks.filter((c) => c.state === "success" || c.state === "neutral" || c.state === "skipped").length;
+  const failure = checks.filter((c) => c.state === "failure" || c.state === "error").length;
+  const pending = checks.filter((c) => c.state === "pending").length;
+
+  const state: CheckStatus["state"] =
+    failure > 0 ? "failure" : pending > 0 ? "pending" : "success";
+
+  return { state, total: checks.length, success, failure, pending, checks };
+}
+
+export async function enrichPRsWithCheckStatus(
+  owner: string,
+  repo: string,
+  prs: { number: number; head: { sha: string } }[]
+): Promise<Map<number, CheckStatus>> {
+  const octokit = await getOctokit();
+  if (!octokit) return new Map();
+
+  const results = await Promise.allSettled(
+    prs.map((pr) =>
+      fetchCheckStatusForRef(octokit, owner, repo, pr.head.sha).then((cs) => ({
+        number: pr.number,
+        checkStatus: cs,
+      }))
+    )
+  );
+
+  const map = new Map<number, CheckStatus>();
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value.checkStatus) {
+      map.set(result.value.number, result.value.checkStatus);
+    }
+  }
+  return map;
+}
+
+export { fetchCheckStatusForRef };
 
 export type SecurityFeatureStatus =
   | "enabled"
@@ -1874,6 +2118,7 @@ export interface RepoSecurityTabData {
   reports: RepoSecurityAlertsResult<SecurityReportSummary>;
   dependabot: RepoSecurityAlertsResult<DependabotAlertSummary>;
   secretScanning: RepoSecurityAlertsResult<SecretScanningAlertSummary>;
+  permissions: RepoPermissions;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -2101,6 +2346,7 @@ export async function getRepoSecurityTabData(
     reports,
     dependabot,
     secretScanning,
+    permissions: extractRepoPermissions(repoResult.data),
   };
 }
 
@@ -2320,6 +2566,109 @@ export async function getRepoContributorStats(
     }));
   } catch {
     return [];
+  }
+}
+
+export interface CommitActivityWeek {
+  total: number;
+  week: number;
+  days: number[];
+}
+
+export async function getCommitActivity(
+  owner: string,
+  repo: string
+): Promise<CommitActivityWeek[]> {
+  const octokit = await getOctokit();
+  if (!octokit) return [];
+
+  try {
+    let response = await (octokit.repos as any).getCommitActivityStats({ owner, repo });
+    if (response.status === 202) {
+      await new Promise((r) => setTimeout(r, 2000));
+      response = await (octokit.repos as any).getCommitActivityStats({ owner, repo });
+    }
+    if (!Array.isArray(response.data)) return [];
+    return (response.data as any[]).map((w: any) => ({
+      total: w.total ?? 0,
+      week: w.week ?? 0,
+      days: w.days ?? [],
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export interface CodeFrequencyWeek {
+  week: number;
+  additions: number;
+  deletions: number;
+}
+
+export async function getCodeFrequency(
+  owner: string,
+  repo: string
+): Promise<CodeFrequencyWeek[]> {
+  const octokit = await getOctokit();
+  if (!octokit) return [];
+
+  try {
+    let response = await (octokit.repos as any).getCodeFrequencyStats({ owner, repo });
+    if (response.status === 202) {
+      await new Promise((r) => setTimeout(r, 2000));
+      response = await (octokit.repos as any).getCodeFrequencyStats({ owner, repo });
+    }
+    if (!Array.isArray(response.data)) return [];
+    return (response.data as any[]).map((entry: any) => ({
+      week: entry[0] ?? 0,
+      additions: entry[1] ?? 0,
+      deletions: Math.abs(entry[2] ?? 0),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export interface WeeklyParticipation {
+  all: number[];
+  owner: number[];
+}
+
+export async function getWeeklyParticipation(
+  owner: string,
+  repo: string
+): Promise<WeeklyParticipation | null> {
+  const octokit = await getOctokit();
+  if (!octokit) return null;
+
+  try {
+    let response = await (octokit.repos as any).getParticipationStats({ owner, repo });
+    if (response.status === 202) {
+      await new Promise((r) => setTimeout(r, 2000));
+      response = await (octokit.repos as any).getParticipationStats({ owner, repo });
+    }
+    if (!response.data?.all) return null;
+    return {
+      all: response.data.all ?? [],
+      owner: response.data.owner ?? [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function getLanguages(
+  owner: string,
+  repo: string
+): Promise<Record<string, number>> {
+  const octokit = await getOctokit();
+  if (!octokit) return {};
+
+  try {
+    const response = await octokit.repos.listLanguages({ owner, repo });
+    return (response.data as any) ?? {};
+  } catch {
+    return {};
   }
 }
 

@@ -32,9 +32,22 @@ export function BranchSelector({
   const router = useRouter();
 
   const items = tab === "branches" ? branches : tags;
-  const filtered = items.filter((item) =>
-    item.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = items
+    .filter((item) =>
+      item.name.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => {
+      // Default branch always first
+      if (tab === "branches" && defaultBranch) {
+        if (a.name === defaultBranch) return -1;
+        if (b.name === defaultBranch) return 1;
+      }
+      // Alpha-only names before names containing numbers
+      const aHasNum = /\d/.test(a.name);
+      const bHasNum = /\d/.test(b.name);
+      if (aHasNum !== bHasNum) return aHasNum ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    });
 
   function selectRef(ref: string) {
     setOpen(false);

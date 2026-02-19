@@ -1,4 +1,3 @@
-import { notFound } from "next/navigation";
 import {
   getUser,
   getUserPublicRepos,
@@ -6,6 +5,34 @@ import {
   getContributionData,
 } from "@/lib/github";
 import { UserProfileContent } from "@/components/users/user-profile-content";
+import { ExternalLink, User } from "lucide-react";
+
+function UnknownUserPage({ username }: { username: string }) {
+  const githubUrl = `https://github.com/${encodeURIComponent(username)}`;
+
+  return (
+    <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+      <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800/60 flex items-center justify-center">
+        <User className="w-8 h-8 text-muted-foreground/50" />
+      </div>
+      <div>
+        <h1 className="text-base font-medium">{username}</h1>
+        <p className="text-xs text-muted-foreground/60 mt-1 max-w-[240px]">
+          This account can&apos;t be viewed here. It may be a bot, app, or mannequin account.
+        </p>
+      </div>
+      <a
+        href={githubUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 border border-border text-muted-foreground hover:text-foreground hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
+      >
+        <ExternalLink className="w-3 h-3" />
+        View on GitHub
+      </a>
+    </div>
+  );
+}
 
 export default async function UserProfilePage({
   params,
@@ -20,18 +47,27 @@ export default async function UserProfilePage({
   let contributionData: Awaited<ReturnType<typeof getContributionData>> = null;
 
   try {
-    [userData, reposData, orgsData, contributionData] = await Promise.all([
-      getUser(username),
-      getUserPublicRepos(username, 100),
-      getUserPublicOrgs(username),
-      getContributionData(username),
-    ]);
+    userData = await getUser(username);
   } catch {
-    notFound();
+    return <UnknownUserPage username={username} />;
   }
 
   if (!userData) {
-    notFound();
+    return <UnknownUserPage username={username} />;
+  }
+
+  const isBot = (userData as any).type === "Bot";
+  if (!isBot) {
+    try {
+      const resolvedLogin = userData.login;
+      [reposData, orgsData, contributionData] = await Promise.all([
+        getUserPublicRepos(resolvedLogin, 100),
+        getUserPublicOrgs(resolvedLogin),
+        getContributionData(resolvedLogin),
+      ]);
+    } catch {
+      // Show profile with whatever we have
+    }
   }
 
   return (

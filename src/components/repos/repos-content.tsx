@@ -20,7 +20,8 @@ import {
   Archive,
   ChevronDown,
 } from "lucide-react";
-import { cn, timeAgo, formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 interface Repo {
   id: number;
@@ -155,7 +156,7 @@ function RepoRow({ repo, showOwner = true }: { repo: Repo; showOwner?: boolean }
           )}
           {repo.updated_at && (
             <span className="ml-auto font-mono text-muted-foreground/50">
-              {timeAgo(repo.updated_at)}
+              <TimeAgo date={repo.updated_at} />
             </span>
           )}
         </div>
@@ -209,7 +210,7 @@ function RepoCard({ repo }: { repo: Repo }) {
         )}
         {repo.updated_at && (
           <span className="ml-auto font-mono text-muted-foreground/50">
-            {timeAgo(repo.updated_at)}
+            <TimeAgo date={repo.updated_at} />
           </span>
         )}
       </div>

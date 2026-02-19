@@ -11,7 +11,8 @@ import {
   X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { cn, formatNumber, timeAgo } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { useSession } from "@/lib/auth-client";
 
 const languageColors: Record<string, string> = {
@@ -158,7 +159,7 @@ export function RepoSearchResults({
               )}
               {repo.updated_at && (
                 <span className="text-[10px] text-muted-foreground/60 font-mono">
-                  {timeAgo(repo.updated_at)}
+                  <TimeAgo date={repo.updated_at} />
                 </span>
               )}
             </div>
@@ -288,7 +289,7 @@ export function IssueListResults({
                 </span>
               )}
               <span className="text-[10px] text-muted-foreground/60 font-mono">
-                {timeAgo(issue.created_at)}
+                <TimeAgo date={issue.created_at} />
               </span>
               {issue.comments > 0 && (
                 <span className="text-[10px] text-muted-foreground/60 font-mono">
@@ -366,7 +367,7 @@ export function PRListResults({
                 </span>
               )}
               <span className="text-[10px] text-muted-foreground/60 font-mono">
-                {timeAgo(pr.created_at)}
+                <TimeAgo date={pr.created_at} />
               </span>
             </div>
           </div>
@@ -423,7 +424,7 @@ export function NotificationListResults({
                 {n.repo}
               </span>
               <span className="text-[10px] text-muted-foreground/60 font-mono">
-                {timeAgo(n.updated_at)}
+                <TimeAgo date={n.updated_at} />
               </span>
             </div>
           </div>

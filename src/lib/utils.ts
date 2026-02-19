@@ -21,7 +21,15 @@ export function timeAgo(date: string | Date): string {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
   if (seconds < 2592000) return `${Math.floor(seconds / 604800)}w ago`;
-  return then.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  const months = Math.floor(seconds / 2592000);
+  if (months < 12) return `${months}mo ago`;
+
+  const sameYear = then.getFullYear() === now.getFullYear();
+  if (sameYear) {
+    return then.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  return then.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 export function formatDuration(

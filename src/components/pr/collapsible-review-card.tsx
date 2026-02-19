@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { ChevronDown } from "lucide-react";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { ClientMarkdown } from "@/components/shared/client-markdown";
 
 const reviewStateBadge: Record<
@@ -113,7 +114,7 @@ export function CollapsibleReviewCard({
             </span>
           )}
           <span className="text-[10px] text-muted-foreground/40 ml-auto shrink-0">
-            {timeAgo(timestamp)}
+            <TimeAgo date={timestamp} />
           </span>
         </button>
 

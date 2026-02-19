@@ -94,34 +94,46 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Dashboard preview — stacked repo screenshots */}
-          <div className="relative w-full max-w-2xl">
-            {/* Back card (dash2) — offset up and right for depth */}
-            <div className="absolute top-0 left-6 right-0 -translate-y-4 scale-[0.97] origin-bottom">
-              <div className="rounded-lg border border-foreground/6 overflow-hidden shadow-xl shadow-black/10 opacity-60">
+          {/* Dashboard preview — fanned cards */}
+          <div className="relative w-full max-w-2xl h-72 xl:h-80">
+            {/* Back card (dash2) — rotated and offset to the left */}
+            <div className="absolute inset-0 -rotate-2 -translate-x-6 -translate-y-2 origin-bottom-right">
+              <div className="rounded-lg border border-foreground/6 overflow-hidden shadow-xl shadow-black/10 opacity-70">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/dash2-light.png"
+                  alt="Repository view"
+                  className="w-full h-auto block dark:hidden"
+                />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/dash2.png"
-                  alt="Repository — better-auth"
-                  className="w-full h-auto block"
+                  alt="Repository view"
+                  className="w-full h-auto hidden dark:block"
                 />
               </div>
             </div>
 
-            {/* Front card (dash1) */}
-            <div className="relative z-10">
+            {/* Front card — slight counter-rotation */}
+            <div className="absolute inset-0 rotate-1 origin-bottom-right z-10">
               <div className="rounded-lg border border-foreground/8 overflow-hidden shadow-2xl shadow-black/20">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
+                  src="/dash1-light.png"
+                  alt="Dashboard preview"
+                  className="w-full h-auto block dark:hidden"
+                />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
                   src="/dash1.png"
-                  alt="Repository — openclaw"
-                  className="w-full h-auto block"
+                  alt="Dashboard preview"
+                  className="w-full h-auto hidden dark:block"
                 />
               </div>
             </div>
 
-            {/* Fade-out gradient at the bottom */}
-            <div className="absolute inset-0 rounded-lg bg-linear-to-t from-(--shader-bg) via-transparent to-transparent pointer-events-none z-20" />
+            {/* Fade-out gradient — short, only at the very bottom */}
+            <div className="absolute inset-x-0 -bottom-10 h-1/3 pointer-events-none z-20" style={{ background: "linear-gradient(to top, var(--shader-bg) 0%, transparent 100%)" }} />
           </div>
         </div>
       </div>

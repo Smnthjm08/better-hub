@@ -89,6 +89,7 @@ export function PRMergePanel({
   const [commitMessage, setCommitMessage] = useState("");
   const [isPending, startTransition] = useTransition();
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [isMerged, setIsMerged] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useClickOutside(dropdownRef, useCallback(() => setDropdownOpen(false), []));
@@ -109,7 +110,8 @@ export function PRMergePanel({
       } else {
         setResult({ type: "success", message: "Merged" });
         setSquashDialogOpen(false);
-        router.refresh();
+        setIsMerged(true);
+        setTimeout(() => router.refresh(), 1500);
       }
     });
   };
@@ -154,7 +156,7 @@ export function PRMergePanel({
     });
   };
 
-  if (merged) return null;
+  if (merged || isMerged) return null;
 
   if (state === "closed") {
     if (!canTriage) return null;

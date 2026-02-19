@@ -136,6 +136,16 @@ export function upsertGithubCacheEntry<T>(
   ).run(userId, cacheKey, cacheType, JSON.stringify(data), now);
 }
 
+export function deleteGithubCacheByPrefix(
+  userId: string,
+  prefix: string
+) {
+  const db = getDb();
+  db.prepare(
+    `DELETE FROM github_cache_entries WHERE user_id = ? AND cache_key LIKE ?`
+  ).run(userId, `${prefix}%`);
+}
+
 export function enqueueGithubSyncJob<TPayload>(
   userId: string,
   dedupeKey: string,

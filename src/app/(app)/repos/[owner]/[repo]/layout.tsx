@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { getRepo, getRepoTree, getRepoNavCounts, getRepoBranches, getRepoTags, getRepoContributors, getUserOrgs, getRepoCommits } from "@/lib/github";
+import { getRepo, getRepoTree, getRepoNavCounts, getRepoBranches, getRepoTags, getRepoContributors, getUserOrgs, getRepoCommits, checkIsStarred } from "@/lib/github";
 import { buildFileTree } from "@/lib/file-tree";
 import { RepoSidebar } from "@/components/repo/repo-sidebar";
 import { RepoNav } from "@/components/repo/repo-nav";
 import { CodeContentWrapper } from "@/components/repo/code-content-wrapper";
 import { RepoLayoutWrapper } from "@/components/repo/repo-layout-wrapper";
+import { ChatPageActivator } from "@/components/shared/chat-page-activator";
 
 export default async function RepoLayout({
   children,
@@ -17,7 +18,7 @@ export default async function RepoLayout({
   const repoData = await getRepo(owner, repoName);
   const isOrgRepo = repoData?.owner?.type === "Organization";
 
-  const [treeResult, navCounts, branches, tags, contributorsData, userOrgs, latestCommits] = await Promise.all([
+  const [treeResult, navCounts, branches, tags, contributorsData, userOrgs, latestCommits, isStarred] = await Promise.all([
     repoData
       ? getRepoTree(owner, repoName, repoData.default_branch, true)
       : Promise.resolve(null),
@@ -29,6 +30,7 @@ export default async function RepoLayout({
     repoData ? getRepoContributors(owner, repoName, 12) : Promise.resolve({ list: [], totalCount: 0 }),
     isOrgRepo ? getUserOrgs() : Promise.resolve([]),
     repoData ? getRepoCommits(owner, repoName, repoData.default_branch, 1, 1) : Promise.resolve([]),
+    repoData ? checkIsStarred(owner, repoName) : Promise.resolve(false),
   ]);
 
   const latestCommit = latestCommits[0] ?? null;
@@ -78,6 +80,8 @@ export default async function RepoLayout({
             parent={(repoData as any).parent ? { fullName: (repoData as any).parent.full_name, owner: (repoData as any).parent.owner.login, name: (repoData as any).parent.name } : null}
             contributors={contributorsData.list}
             contributorsTotalCount={contributorsData.totalCount}
+            isStarred={isStarred}
+            branches={branches}
             latestCommit={latestCommit ? {
               sha: (latestCommit as any).sha,
               message: (latestCommit as any).commit?.message ?? "",
@@ -114,6 +118,14 @@ export default async function RepoLayout({
           {children}
         </CodeContentWrapper>
       </RepoLayoutWrapper>
+      <ChatPageActivator
+        config={{
+          chatType: "general",
+          contextKey: `${owner}/${repoName}`,
+          contextBody: {},
+          repoFileSearch: { owner, repo: repoName, ref: repoData.default_branch },
+        }}
+      />
     </div>
   );
 }

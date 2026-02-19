@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ChevronsLeft, ChevronsRight } from "lucide-react";
@@ -46,6 +46,29 @@ function NavBreadcrumb({ owner, repo, avatarUrl }: { owner: string; repo: string
 
 export function RepoLayoutWrapper({ sidebar, children, owner, repo, avatarUrl }: RepoLayoutWrapperProps) {
   const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const delta = ev.clientX - dragRef.current.startX;
+      setSidebarWidth(Math.max(180, Math.min(480, dragRef.current.startWidth + delta)));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+  }, [sidebarWidth]);
 
   return (
     <>
@@ -54,29 +77,38 @@ export function RepoLayoutWrapper({ sidebar, children, owner, repo, avatarUrl }:
       {/* Sidebar */}
       <div
         className={cn(
-          "hidden lg:flex shrink-0 transition-[width,opacity] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden relative",
-          sidebarVisible ? "w-[260px] opacity-100" : "w-0 opacity-0"
+          "hidden lg:flex shrink-0 overflow-hidden relative",
+          !sidebarVisible && "w-0 opacity-0"
         )}
+        style={sidebarVisible ? { width: sidebarWidth } : undefined}
       >
-        <div className="w-[260px] min-w-[260px]">
+        <div style={{ width: sidebarWidth, minWidth: sidebarWidth }}>
           {sidebar}
         </div>
       </div>
 
-      {/* Sidebar toggle */}
+      {/* Sidebar resize handle + toggle */}
       <div
         className={cn(
-          "hidden lg:flex items-center shrink-0 z-10",
-          "group/toggle",
+          "hidden lg:flex shrink-0 z-10 flex-col items-center",
           sidebarVisible ? "relative" : "absolute left-0 top-0 h-full"
         )}
       >
+        {sidebarVisible && (
+          <div
+            onMouseDown={handleDragStart}
+            className="flex-1 w-1 cursor-col-resize flex items-center justify-center hover:bg-foreground/10 active:bg-foreground/15 transition-colors group/resize"
+          >
+            <div className="w-[2px] h-8 rounded-full bg-border group-hover/resize:bg-foreground/20 group-active/resize:bg-foreground/30 transition-colors" />
+          </div>
+        )}
         <button
           onClick={() => setSidebarVisible((v) => !v)}
           className={cn(
-            "flex items-center justify-center w-5 h-10 rounded-md",
-            "text-muted-foreground/0 group-hover/toggle:text-muted-foreground/60 hover:!text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800/40",
-            "cursor-pointer transition-all duration-150"
+            "flex items-center justify-center w-5 h-8 shrink-0",
+            "text-muted-foreground/0 hover:text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800/40",
+            "cursor-pointer transition-all duration-150",
+            !sidebarVisible && "mt-2 rounded-md"
           )}
           title={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
         >

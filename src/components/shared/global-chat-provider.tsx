@@ -9,6 +9,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import type { GhostTabState } from "@/lib/chat-store";
 
 export interface InlineContext {
   filename: string;
@@ -27,6 +28,7 @@ export interface ChatConfig {
   emptyTitle?: string;
   emptyDescription?: string;
   inputPrefix?: ReactNode;
+  repoFileSearch?: { owner: string; repo: string; ref: string };
 }
 
 export interface GlobalChatState {
@@ -39,12 +41,14 @@ export interface GlobalChatState {
   placeholder: string;
   emptyTitle: string;
   emptyDescription: string;
+  repoFileSearch: { owner: string; repo: string; ref: string } | null;
 }
 
 export type AddCodeContextFn = (context: InlineContext) => void;
 
 interface GlobalChatContextValue {
   state: GlobalChatState;
+  tabState: GhostTabState;
   openChat: (config: ChatConfig) => void;
   setContext: (config: ChatConfig) => void;
   clearContext: () => void;
@@ -53,6 +57,9 @@ interface GlobalChatContextValue {
   setIsWorking: (working: boolean) => void;
   addCodeContext: (context: InlineContext) => void;
   registerContextHandler: (fn: AddCodeContextFn) => void;
+  addTab: () => void;
+  closeTab: (tabId: string) => void;
+  switchTab: (tabId: string) => void;
 }
 
 const GlobalChatContext = createContext<GlobalChatContextValue | null>(null);
@@ -69,7 +76,12 @@ export function useGlobalChatOptional() {
   return useContext(GlobalChatContext);
 }
 
-export function GlobalChatProvider({ children }: { children: ReactNode }) {
+interface GlobalChatProviderProps {
+  children: ReactNode;
+  initialTabState: GhostTabState;
+}
+
+export function GlobalChatProvider({ children, initialTabState }: GlobalChatProviderProps) {
   const [state, setState] = useState<GlobalChatState>({
     isOpen: false,
     isWorking: false,
@@ -80,9 +92,77 @@ export function GlobalChatProvider({ children }: { children: ReactNode }) {
     placeholder: "Ask Ghost...",
     emptyTitle: "Ghost",
     emptyDescription: "Ask questions and get help",
+    repoFileSearch: null,
   });
 
+  const [tabState, setTabState] = useState<GhostTabState>(initialTabState);
+
   const contextHandlerRef = useRef<AddCodeContextFn | null>(null);
+
+  // ── Tab mutations (optimistic + fire-and-forget POST) ──────────────
+
+  const addTab = useCallback(() => {
+    const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    let label = "";
+    let counter = 0;
+    setTabState((prev) => {
+      counter = prev.counter + 1;
+      label = `Thread ${counter}`;
+      return {
+        tabs: [...prev.tabs, { id, label }],
+        activeTabId: id,
+        counter,
+      };
+    });
+    // Fire-and-forget persist with client-generated ID
+    // Use setTimeout so the setter has resolved and counter/label are set
+    setTimeout(() => {
+      fetch("/api/ai/ghost-tabs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add", tabId: id, label, counter }),
+      }).catch(() => {});
+    }, 0);
+  }, []);
+
+  const closeTab = useCallback((tabId: string) => {
+    let newDefault: { id: string; label: string; counter: number } | undefined;
+    setTabState((prev) => {
+      const idx = prev.tabs.findIndex((t) => t.id === tabId);
+      const remaining = prev.tabs.filter((t) => t.id !== tabId);
+      if (remaining.length === 0) {
+        const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        newDefault = { id, label: "Thread 1", counter: 1 };
+        return { tabs: [{ id, label: "Thread 1" }], activeTabId: id, counter: 1 };
+      }
+      let newActiveId = prev.activeTabId;
+      if (prev.activeTabId === tabId) {
+        const newIdx = Math.min(idx, remaining.length - 1);
+        newActiveId = remaining[newIdx].id;
+      }
+      return { ...prev, tabs: remaining, activeTabId: newActiveId };
+    });
+    // Fire-and-forget persist
+    setTimeout(() => {
+      fetch("/api/ai/ghost-tabs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "close", tabId, newDefault }),
+      }).catch(() => {});
+    }, 0);
+  }, []);
+
+  const switchTab = useCallback((tabId: string) => {
+    setTabState((prev) => ({ ...prev, activeTabId: tabId }));
+    // Persist (fire-and-forget, no reconciliation needed for switch)
+    fetch("/api/ai/ghost-tabs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "switch", tabId }),
+    }).catch(() => {});
+  }, []);
+
+  // ── Existing chat state logic ──────────────────────────────────────
 
   const setContext = useCallback((config: ChatConfig) => {
     setState((prev) => ({
@@ -94,6 +174,7 @@ export function GlobalChatProvider({ children }: { children: ReactNode }) {
       placeholder: config.placeholder ?? "Ask Ghost...",
       emptyTitle: config.emptyTitle ?? "Ghost",
       emptyDescription: config.emptyDescription ?? "Ask questions and get help",
+      repoFileSearch: config.repoFileSearch ?? null,
     }));
   }, []);
 
@@ -107,6 +188,7 @@ export function GlobalChatProvider({ children }: { children: ReactNode }) {
       placeholder: "Ask Ghost...",
       emptyTitle: "Ghost",
       emptyDescription: "Ask questions and get help",
+      repoFileSearch: null,
     }));
   }, []);
 
@@ -169,6 +251,7 @@ export function GlobalChatProvider({ children }: { children: ReactNode }) {
     <GlobalChatContext.Provider
       value={{
         state,
+        tabState,
         openChat,
         setContext,
         clearContext,
@@ -177,6 +260,9 @@ export function GlobalChatProvider({ children }: { children: ReactNode }) {
         setIsWorking,
         addCodeContext,
         registerContextHandler,
+        addTab,
+        closeTab,
+        switchTab,
       }}
     >
       {children}

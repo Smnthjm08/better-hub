@@ -25,7 +25,7 @@ export function FileList({ items, owner, repo, currentRef }: FileListProps) {
 
   if (sorted.length === 0) {
     return (
-      <div className="border border-border py-16 text-center">
+      <div className="border border-border rounded-md dark:bg-zinc-900/60 py-16 text-center">
         <p className="text-xs text-muted-foreground font-mono">
           This repository is empty
         </p>
@@ -34,7 +34,7 @@ export function FileList({ items, owner, repo, currentRef }: FileListProps) {
   }
 
   return (
-    <div className="border border-border divide-y divide-border">
+    <div className="border border-border divide-y divide-border rounded-md overflow-hidden dark:bg-zinc-900/60">
       {sorted.map((item) => {
         const href =
           item.type === "dir"
@@ -45,7 +45,7 @@ export function FileList({ items, owner, repo, currentRef }: FileListProps) {
           <Link
             key={item.path}
             href={href}
-            className="group flex items-center gap-3 px-4 py-2 hover:bg-muted/50 dark:hover:bg-white/[0.02] transition-colors"
+            className="group flex items-center gap-3 px-4 py-2 hover:bg-muted/50 dark:hover:bg-zinc-800/50 transition-colors"
           >
             <FileTypeIcon
               name={item.name}

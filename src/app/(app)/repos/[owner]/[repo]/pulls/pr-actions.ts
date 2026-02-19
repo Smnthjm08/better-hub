@@ -1,7 +1,32 @@
 "use server";
 
-import { getOctokit, getGitHubToken } from "@/lib/github";
+import { getOctokit, getGitHubToken, invalidatePullRequestCache } from "@/lib/github";
 import { revalidatePath } from "next/cache";
+
+export async function renamePullRequest(
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  title: string
+) {
+  const octokit = await getOctokit();
+  if (!octokit) return { error: "Not authenticated" };
+
+  try {
+    await octokit.pulls.update({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      title,
+    });
+    await invalidatePullRequestCache(owner, repo, pullNumber);
+    revalidatePath(`/repos/${owner}/${repo}/pulls/${pullNumber}`);
+    revalidatePath(`/repos/${owner}/${repo}/pulls`);
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || "Failed to rename" };
+  }
+}
 
 export type MergeMethod = "merge" | "squash" | "rebase";
 
@@ -25,7 +50,9 @@ export async function mergePullRequest(
       ...(commitTitle ? { commit_title: commitTitle } : {}),
       ...(commitMessage ? { commit_message: commitMessage } : {}),
     });
+    await invalidatePullRequestCache(owner, repo, pullNumber);
     revalidatePath(`/repos/${owner}/${repo}/pulls/${pullNumber}`);
+    revalidatePath(`/repos/${owner}/${repo}/pulls`);
     return { success: true };
   } catch (e: any) {
     return { error: e.message || "Failed to merge" };
@@ -47,7 +74,9 @@ export async function closePullRequest(
       pull_number: pullNumber,
       state: "closed",
     });
+    await invalidatePullRequestCache(owner, repo, pullNumber);
     revalidatePath(`/repos/${owner}/${repo}/pulls/${pullNumber}`);
+    revalidatePath(`/repos/${owner}/${repo}/pulls`);
     return { success: true };
   } catch (e: any) {
     return { error: e.message || "Failed to close" };
@@ -69,7 +98,9 @@ export async function reopenPullRequest(
       pull_number: pullNumber,
       state: "open",
     });
+    await invalidatePullRequestCache(owner, repo, pullNumber);
     revalidatePath(`/repos/${owner}/${repo}/pulls/${pullNumber}`);
+    revalidatePath(`/repos/${owner}/${repo}/pulls`);
     return { success: true };
   } catch (e: any) {
     return { error: e.message || "Failed to reopen" };
@@ -96,6 +127,7 @@ export async function submitPRReview(
       event,
       ...(body ? { body } : {}),
     });
+    await invalidatePullRequestCache(owner, repo, pullNumber);
     revalidatePath(`/repos/${owner}/${repo}/pulls/${pullNumber}`);
     return { success: true };
   } catch (e: any) {
@@ -119,6 +151,7 @@ export async function addPRComment(
       issue_number: pullNumber,
       body,
     });
+    await invalidatePullRequestCache(owner, repo, pullNumber);
     revalidatePath(`/repos/${owner}/${repo}/pulls/${pullNumber}`);
     return { success: true };
   } catch (e: any) {
@@ -157,6 +190,7 @@ export async function addPRReviewComment(
       params.start_side = startSide || side;
     }
     await octokit.pulls.createReviewComment(params as any);
+    await invalidatePullRequestCache(owner, repo, pullNumber);
     revalidatePath(`/repos/${owner}/${repo}/pulls/${pullNumber}`);
     return { success: true };
   } catch (e: any) {
@@ -214,6 +248,7 @@ export async function commitSuggestion(
       branch,
     });
 
+    await invalidatePullRequestCache(owner, repo, pullNumber);
     revalidatePath(`/repos/${owner}/${repo}/pulls/${pullNumber}`);
     return { success: true };
   } catch (e: any) {
@@ -250,6 +285,7 @@ export async function resolveReviewThread(
     if (json.errors?.length) {
       return { error: json.errors[0].message };
     }
+    await invalidatePullRequestCache(owner, repo, pullNumber);
     revalidatePath(`/repos/${owner}/${repo}/pulls/${pullNumber}`);
     return { success: true };
   } catch (e: any) {
@@ -286,6 +322,7 @@ export async function unresolveReviewThread(
     if (json.errors?.length) {
       return { error: json.errors[0].message };
     }
+    await invalidatePullRequestCache(owner, repo, pullNumber);
     revalidatePath(`/repos/${owner}/${repo}/pulls/${pullNumber}`);
     return { success: true };
   } catch (e: any) {

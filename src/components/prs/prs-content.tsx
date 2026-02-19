@@ -9,7 +9,8 @@ import {
   MessageSquare,
   Clock,
 } from "lucide-react";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { toInternalUrl } from "@/lib/github-utils";
 import { CopyLinkButton } from "@/components/shared/copy-link-button";
 import { CollectionsContent } from "@/components/collections/collections-content";
@@ -193,7 +194,7 @@ export function PRsContent({
                   )}
                   <span className="flex items-center gap-1 text-[11px] text-muted-foreground/50 font-mono">
                     <Clock className="w-3 h-3" />
-                    {timeAgo(pr.updated_at)}
+                    <TimeAgo date={pr.updated_at} />
                   </span>
                   {pr.comments > 0 && (
                     <span className="flex items-center gap-1 text-[11px] text-muted-foreground/50">

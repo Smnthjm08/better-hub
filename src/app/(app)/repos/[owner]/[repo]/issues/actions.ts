@@ -1,6 +1,6 @@
 "use server";
 
-import { getOctokit } from "@/lib/github";
+import { getOctokit, invalidateRepoIssuesCache } from "@/lib/github";
 import { revalidatePath } from "next/cache";
 
 export async function fetchIssuesByAuthor(
@@ -196,6 +196,7 @@ export async function createIssue(
       assignees: assignees.length > 0 ? assignees : undefined,
     });
 
+    await invalidateRepoIssuesCache(owner, repo);
     revalidatePath(`/repos/${owner}/${repo}/issues`);
     return { success: true, number: data.number };
   } catch (err: any) {

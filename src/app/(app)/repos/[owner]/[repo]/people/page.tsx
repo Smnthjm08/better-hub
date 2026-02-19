@@ -21,21 +21,37 @@ export default async function PeoplePage({
     }
   }
 
-  // Build weekly commit data per contributor (last 12 weeks)
+  // Build weekly commit data + additions/deletions per contributor
   const weeklyMap: Record<string, number[]> = {};
+  const diffMap: Record<string, { additions: number; deletions: number; monthAdditions: number; monthDeletions: number }> = {};
   for (const stat of contributorStats) {
     if (stat.login) {
+      const key = stat.login.toLowerCase();
       const recentWeeks = stat.weeks.slice(-12);
-      weeklyMap[stat.login.toLowerCase()] = recentWeeks.map((w) => w.c);
+      weeklyMap[key] = recentWeeks.map((w) => w.c);
+      const last4 = stat.weeks.slice(-4);
+      diffMap[key] = {
+        additions: stat.weeks.reduce((s, w) => s + w.a, 0),
+        deletions: stat.weeks.reduce((s, w) => s + w.d, 0),
+        monthAdditions: last4.reduce((s, w) => s + w.a, 0),
+        monthDeletions: last4.reduce((s, w) => s + w.d, 0),
+      };
     }
   }
 
-  const people = (members as any[]).map((m: any) => ({
-    login: m.login as string,
-    avatar_url: m.avatar_url as string,
-    contributions: contributionMap[m.login?.toLowerCase()] ?? 0,
-    weeklyCommits: weeklyMap[m.login?.toLowerCase()] ?? [],
-  }));
+  const people = (members as any[]).map((m: any) => {
+    const key = m.login?.toLowerCase();
+    return {
+      login: m.login as string,
+      avatar_url: m.avatar_url as string,
+      contributions: contributionMap[key] ?? 0,
+      weeklyCommits: weeklyMap[key] ?? [],
+      additions: diffMap[key]?.additions ?? 0,
+      deletions: diffMap[key]?.deletions ?? 0,
+      monthAdditions: diffMap[key]?.monthAdditions ?? 0,
+      monthDeletions: diffMap[key]?.monthDeletions ?? 0,
+    };
+  });
 
   return <PeopleList owner={owner} repo={repo} people={people} />;
 }

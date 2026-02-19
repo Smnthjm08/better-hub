@@ -9,7 +9,8 @@ import {
   type DiffSegment,
 } from "@/lib/github-utils";
 import type { SyntaxToken } from "@/lib/shiki";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import {
   File,
   FilePlus2,
@@ -199,7 +200,7 @@ export function CommitDetail({
               </>
             )}
             {authorDate && (
-              <span>committed {timeAgo(authorDate)}</span>
+              <span>committed <TimeAgo date={authorDate} /></span>
             )}
           </div>
 

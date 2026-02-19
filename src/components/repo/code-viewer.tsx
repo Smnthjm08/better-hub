@@ -1,15 +1,19 @@
 import { getLanguageFromFilename } from "@/lib/github-utils";
 import { highlightCode } from "@/lib/shiki";
-import { cn } from "@/lib/utils";
+import { CodeViewerClient } from "./code-viewer-client";
 
 export async function CodeViewer({
   content,
   filename,
   className,
+  filePath,
+  fileSize,
 }: {
   content: string;
   filename: string;
   className?: string;
+  filePath?: string;
+  fileSize?: number;
 }) {
   const lang = getLanguageFromFilename(filename);
   const html = await highlightCode(content, lang);
@@ -18,17 +22,16 @@ export async function CodeViewer({
   const gutterW = String(lineCount).length;
 
   return (
-    <div
-      className={cn(
-        "code-viewer overflow-x-auto rounded-md border border-border",
-        className
-      )}
-      style={{ "--cv-gutter-w": `${gutterW + 1}ch` } as React.CSSProperties}
-    >
-      <div
-        className="code-content"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    </div>
+    <CodeViewerClient
+      html={html}
+      content={content}
+      filename={filename}
+      filePath={filePath}
+      language={lang}
+      lineCount={lineCount}
+      fileSize={fileSize}
+      gutterW={gutterW}
+      className={className}
+    />
   );
 }

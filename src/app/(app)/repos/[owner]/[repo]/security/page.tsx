@@ -2,7 +2,6 @@ import { ShieldAlert } from "lucide-react";
 import {
   getRepoSecurityTabData,
   getFileContent,
-  getAuthenticatedUser,
 } from "@/lib/github";
 import { renderMarkdownToHtml } from "@/components/shared/markdown-renderer";
 import { SecurityView } from "@/components/security/security-view";
@@ -33,14 +32,12 @@ export default async function SecurityPage({
 }) {
   const { owner, repo } = await params;
 
-  const [data, policyHtml, user] = await Promise.all([
+  const [data, policyHtml] = await Promise.all([
     getRepoSecurityTabData(owner, repo),
     fetchSecurityPolicy(owner, repo),
-    getAuthenticatedUser(),
   ]);
 
-  const isOwner =
-    !!user && user.login.toLowerCase() === owner.toLowerCase();
+  const hasSecurityAccess = !!data && (data.permissions.admin || data.permissions.maintain);
 
   if (!data) {
     return (
@@ -65,7 +62,7 @@ export default async function SecurityPage({
       dependabot={data.dependabot}
       secretScanning={data.secretScanning}
       policyHtml={policyHtml}
-      isOwner={isOwner}
+      isOwner={hasSecurityAccess}
     />
   );
 }

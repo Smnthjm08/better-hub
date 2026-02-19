@@ -1,6 +1,12 @@
 "use server";
 
-import { getOctokit } from "@/lib/github";
+import { getOctokit, invalidateRepoPullRequestsCache } from "@/lib/github";
+import { revalidatePath } from "next/cache";
+
+export async function refreshPullRequests(owner: string, repo: string) {
+  await invalidateRepoPullRequestsCache(owner, repo);
+  revalidatePath(`/repos/${owner}/${repo}/pulls`);
+}
 
 export async function fetchPRsByAuthor(
   owner: string,

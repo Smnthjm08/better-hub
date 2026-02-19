@@ -68,6 +68,11 @@ export function RepoNav({ owner, repo, openIssuesCount, openPrsCount, activeRuns
       active: pathname.startsWith(`${base}/security`),
     },
     {
+      label: "Insights",
+      href: `${base}/insights`,
+      active: pathname.startsWith(`${base}/insights`),
+    },
+    {
       label: "Settings",
       href: `${base}/settings`,
       active: pathname.startsWith(`${base}/settings`),

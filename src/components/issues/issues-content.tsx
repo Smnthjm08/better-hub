@@ -8,8 +8,9 @@ import {
   Clock,
   User,
 } from "lucide-react";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { toInternalUrl } from "@/lib/github-utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { CopyLinkButton } from "@/components/shared/copy-link-button";
 
 interface IssueItem {
@@ -141,7 +142,7 @@ export function IssuesContent({
                   )}
                   <span className="flex items-center gap-1 text-[11px] text-muted-foreground/50">
                     <Clock className="w-3 h-3" />
-                    {timeAgo(issue.updated_at)}
+                    <TimeAgo date={issue.updated_at} />
                   </span>
                   {issue.comments > 0 && (
                     <span className="flex items-center gap-1 text-[11px] text-muted-foreground/50">

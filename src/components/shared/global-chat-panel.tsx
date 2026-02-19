@@ -9,49 +9,10 @@ import {
   useGlobalChat,
   type InlineContext,
 } from "@/components/shared/global-chat-provider";
-
-// ─── Tab types & helpers ────────────────────────────────────────────────────
-
-interface ChatTab {
-  id: string;
-  label: string;
-}
-
-interface TabState {
-  tabs: ChatTab[];
-  activeTabId: string;
-  counter: number;
-}
-
-function generateTabId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-}
-
-function createDefaultTabState(): TabState {
-  const id = generateTabId();
-  return { tabs: [{ id, label: "Thread 1" }], activeTabId: id, counter: 1 };
-}
-
-function loadTabState(key: string): TabState {
-  if (typeof window === "undefined") return createDefaultTabState();
-  try {
-    const raw = localStorage.getItem(`ghost-tabs:${key}`);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.tabs?.length > 0 && parsed.activeTabId && typeof parsed.counter === "number") {
-        return parsed;
-      }
-    }
-  } catch {}
-  return createDefaultTabState();
-}
-
-function saveTabState(key: string, state: TabState) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(`ghost-tabs:${key}`, JSON.stringify(state));
-  } catch {}
-}
+import {
+  searchRepoFiles,
+  fetchFileContentForContext,
+} from "@/app/(app)/repos/[owner]/[repo]/file-search-actions";
 
 // ─── Page hints ─────────────────────────────────────────────────────────────
 
@@ -133,11 +94,17 @@ function getPageHints(pathname: string) {
 // ─── Panel ──────────────────────────────────────────────────────────────────
 
 export function GlobalChatPanel() {
-  const { state, closeChat, registerContextHandler } = useGlobalChat();
+  const { state, tabState, closeChat, registerContextHandler, addTab, closeTab, switchTab } = useGlobalChat();
   const [contexts, setContexts] = useState<InlineContext[]>([]);
   const prevContextKeyRef = useRef<string | null>(null);
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  // Defer rendering until after hydration — this panel starts hidden (translate-x-full)
+  // and depends on client-only state (chat history, persisted context), so SSR is pointless
+  // and causes hydration mismatches.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Active file from URL ?file= param (set by PR diff viewer)
   const activeFile = searchParams.get("file") ?? undefined;
@@ -148,6 +115,19 @@ export function GlobalChatPanel() {
     if (!prCtx?.files) return undefined;
     return prCtx.files as { filename: string; patch: string }[];
   }, [state.contextBody]);
+
+  // # file mention: search repo files
+  const repoFileSearch = state.repoFileSearch;
+
+  const handleSearchRepoFiles = useCallback(async (query: string) => {
+    if (!repoFileSearch) return [];
+    return searchRepoFiles(repoFileSearch.owner, repoFileSearch.repo, repoFileSearch.ref, query);
+  }, [repoFileSearch]);
+
+  const handleFetchFileContent = useCallback(async (path: string) => {
+    if (!repoFileSearch) return null;
+    return fetchFileContentForContext(repoFileSearch.owner, repoFileSearch.repo, path, repoFileSearch.ref);
+  }, [repoFileSearch]);
 
   // Clear inline contexts when context key changes
   useEffect(() => {
@@ -226,23 +206,7 @@ export function GlobalChatPanel() {
     ? state.suggestions
     : pageHints.suggestions;
 
-  // ── Tab state (persisted to localStorage per context) ─────────────────
-
-  const [tabState, setTabState] = useState<TabState>(() =>
-    loadTabState(effectiveContextKey)
-  );
-
-  // Reload tabs when effective context changes (e.g. navigating to a different PR)
-  const prevTabContextRef = useRef(effectiveContextKey);
-  if (effectiveContextKey !== prevTabContextRef.current) {
-    prevTabContextRef.current = effectiveContextKey;
-    setTabState(loadTabState(effectiveContextKey));
-  }
-
-  // Persist tab state to localStorage
-  useEffect(() => {
-    saveTabState(effectiveContextKey, tabState);
-  }, [effectiveContextKey, tabState]);
+  // ── Tab state (from context, persisted server-side) ────────────────────
 
   const activeTabId =
     tabState.tabs.find((t) => t.id === tabState.activeTabId)?.id ||
@@ -257,65 +221,49 @@ export function GlobalChatPanel() {
     }
   }, [activeTabId]);
 
-  const addTab = useCallback(() => {
-    setTabState((prev) => {
-      const id = generateTabId();
-      const num = prev.counter + 1;
-      return {
-        tabs: [...prev.tabs, { id, label: `Thread ${num}` }],
-        activeTabId: id,
-        counter: num,
-      };
-    });
-  }, []);
-
-  const closeTab = useCallback((tabId: string) => {
-    setTabState((prev) => {
-      const idx = prev.tabs.findIndex((t) => t.id === tabId);
-      const remaining = prev.tabs.filter((t) => t.id !== tabId);
-      if (remaining.length === 0) return createDefaultTabState();
-      let newActiveId = prev.activeTabId;
-      if (prev.activeTabId === tabId) {
-        const newIdx = Math.min(idx, remaining.length - 1);
-        newActiveId = remaining[newIdx].id;
-      }
-      return { ...prev, tabs: remaining, activeTabId: newActiveId };
-    });
-  }, []);
-
-  const switchTab = useCallback((tabId: string) => {
-    setTabState((prev) => ({ ...prev, activeTabId: tabId }));
-  }, []);
-
   // ── Inline context chips (input prefix) ───────────────────────────────
 
   const inputPrefix =
     contexts.length > 0 ? (
-      <div className="flex flex-wrap gap-1 px-2.5 pt-2">
-        {contexts.map((ctx, i) => (
+      <div className="flex items-center gap-1.5 px-2.5 pt-2">
+        {contexts.length === 1 ? (
           <span
-            key={`${ctx.filename}:${ctx.startLine}-${ctx.endLine}-${i}`}
             className="inline-flex items-center gap-1 pl-1.5 pr-0.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800/60 text-[10px] font-mono text-muted-foreground/70 max-w-[200px]"
           >
             <Code2 className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" />
             <span className="truncate">
-              {ctx.filename.split("/").pop()}
+              {contexts[0].filename.split("/").pop()}
               <span className="text-muted-foreground/40">
-                :{ctx.startLine}
-                {ctx.endLine !== ctx.startLine && `\u2013${ctx.endLine}`}
+                :{contexts[0].startLine}
+                {contexts[0].endLine !== contexts[0].startLine && `\u2013${contexts[0].endLine}`}
               </span>
             </span>
             <button
               type="button"
-              onClick={() =>
-                setContexts((prev) => prev.filter((_, j) => j !== i))
-              }
+              onClick={() => setContexts([])}
               className="p-0.5 rounded text-muted-foreground/30 hover:text-muted-foreground transition-colors cursor-pointer shrink-0"
             >
               <X className="w-2 h-2" />
             </button>
           </span>
-        ))}
+        ) : (
+          <span className="inline-flex items-center gap-1.5 pl-1.5 pr-0.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800/60 text-[10px] font-mono text-muted-foreground/70">
+            <Code2 className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" />
+            <span className="size-4 rounded-full bg-foreground/10 flex items-center justify-center text-[9px] font-semibold text-muted-foreground/80 tabular-nums">
+              {contexts.length}
+            </span>
+            <span className="text-muted-foreground/50">
+              {contexts.length} files
+            </span>
+            <button
+              type="button"
+              onClick={() => setContexts([])}
+              className="p-0.5 rounded text-muted-foreground/30 hover:text-muted-foreground transition-colors cursor-pointer shrink-0"
+            >
+              <X className="w-2 h-2" />
+            </button>
+          </span>
+        )}
       </div>
     ) : null;
 
@@ -326,13 +274,15 @@ export function GlobalChatPanel() {
     ...(activeFile ? { activeFile } : {}),
   };
 
+  if (!mounted) return null;
+
   return (
     <>
     <div
       className={cn(
         "fixed top-10 right-0 z-40 h-[calc(100dvh-2.5rem)] w-full sm:w-[380px]",
         "bg-background border-l border-border",
-        "flex flex-col shadow-[-8px_0_24px_-4px_rgba(0,0,0,0.12)] dark:shadow-[-8px_0_24px_-4px_rgba(0,0,0,0.4)]",
+        "flex flex-col shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.25)]",
         "transition-transform duration-300 ease-in-out",
         state.isOpen
           ? "translate-x-0"
@@ -446,6 +396,9 @@ export function GlobalChatPanel() {
               onAddFileContext={handleAddFileContext}
               attachedContexts={isActive ? contexts : []}
               onContextsConsumed={() => setContexts([])}
+              onSearchRepoFiles={repoFileSearch ? handleSearchRepoFiles : undefined}
+              onFetchFileContent={repoFileSearch ? handleFetchFileContent : undefined}
+              hashMentionPrFiles={mentionableFiles}
             />
           </div>
         );

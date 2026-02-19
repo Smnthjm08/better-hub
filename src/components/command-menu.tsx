@@ -457,7 +457,7 @@ export function CommandMenu() {
             aria-label="Command Menu"
             className={cn(
               "fixed z-50 left-1/2 -translate-x-1/2 w-full rounded-lg border shadow-lg overflow-hidden",
-              "border-border/60 dark:border-white/6 bg-white dark:bg-black",
+              "border-border/60 dark:border-white/6 bg-white dark:bg-zinc-950",
               "transition-all duration-150",
               open
                 ? "opacity-100 scale-100 translate-y-0"

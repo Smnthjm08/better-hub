@@ -1,8 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
-import { timeAgo } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { BotActivityGroup } from "@/components/pr/bot-activity-group";
 import { ReactionDisplay, type Reactions } from "@/components/shared/reaction-display";
 
@@ -199,7 +199,7 @@ async function ChatMessage({
               </span>
             )}
           <span className="text-[10px] text-muted-foreground/40 ml-auto shrink-0">
-            {timeAgo(entry.created_at)}
+            <TimeAgo date={entry.created_at} />
           </span>
         </div>
 

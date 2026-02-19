@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { signOut, useSession } from "@/lib/auth-client";
 import {
-  Compass,
+  Radar,
   FolderGit2,
   GitPullRequest,
   Search,
@@ -29,7 +29,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const navItems = [
-  { href: "/dashboard", label: "Overview", icon: Compass, key: "1" },
+  { href: "/dashboard", label: "Overview", icon: Radar, key: "1" },
   { href: "/repos", label: "Repos", icon: FolderGit2, key: "2" },
   { href: "/prs", label: "PRs", icon: GitPullRequest, key: "3" },
   { href: "/search", label: "Search", icon: Search, key: "4" },

@@ -1,0 +1,170 @@
+"use client";
+
+import { useState } from "react";
+import { LogOut, Trash2, Github, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { signOut, authClient } from "@/lib/auth-client";
+
+interface AccountTabProps {
+  user: {
+    name: string;
+    email: string;
+    image: string | null;
+  };
+  connectedAccounts: { providerId: string }[];
+}
+
+export function AccountTab({ user, connectedAccounts }: AccountTabProps) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [connectingSlack, setConnectingSlack] = useState(false);
+
+  const slackConnected = connectedAccounts.some(
+    (a) => a.providerId === "slack"
+  );
+
+  async function handleConnectSlack() {
+    setConnectingSlack(true);
+    try {
+      await authClient.signIn.social({ provider: "slack" });
+    } catch {
+      setConnectingSlack(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    await signOut();
+    window.location.href = "/";
+  }
+
+  return (
+    <div className="divide-y divide-border">
+      {/* Profile */}
+      <div className="px-4 py-4">
+        <label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+          Profile
+        </label>
+        <div className="flex items-center gap-3 mt-2">
+          {user.image && (
+            <img
+              src={user.image}
+              alt={user.name}
+              className="w-8 h-8 rounded-full"
+            />
+          )}
+          <div>
+            <p className="text-xs font-mono font-medium">{user.name}</p>
+            <p className="text-[10px] font-mono text-muted-foreground/50">
+              {user.email}
+            </p>
+          </div>
+        </div>
+        <p className="mt-2 text-[10px] text-muted-foreground/50 font-mono">
+          Profile info is synced from GitHub.
+        </p>
+      </div>
+
+      {/* Connected Accounts */}
+      <div className="px-4 py-4">
+        <label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+          Connected Accounts
+        </label>
+        <div className="mt-2 space-y-1">
+          {/* GitHub */}
+          <div className="flex items-center justify-between py-2">
+            <div className="flex items-center gap-2">
+              <Github className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-xs font-mono">GitHub</span>
+              <span className="text-[10px] font-mono text-muted-foreground/40">
+                connected
+              </span>
+            </div>
+            <span className="text-[10px] font-mono text-muted-foreground/40 bg-muted/50 dark:bg-white/[0.04] px-1.5 py-0.5">
+              primary
+            </span>
+          </div>
+
+          {/* Slack */}
+          <div className="flex items-center justify-between py-2">
+            <div className="flex items-center gap-2">
+              <svg
+                className="w-3.5 h-3.5 text-muted-foreground"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z" />
+              </svg>
+              <span className="text-xs font-mono">Slack</span>
+              <span className="text-[10px] font-mono text-muted-foreground/40">
+                {slackConnected ? "connected" : "not connected"}
+              </span>
+            </div>
+            {!slackConnected && (
+              <button
+                onClick={handleConnectSlack}
+                disabled={connectingSlack}
+                className="border border-border px-2 py-1 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:bg-muted/50 dark:hover:bg-white/[0.04] transition-colors cursor-pointer disabled:opacity-40"
+              >
+                {connectingSlack ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  "connect"
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Sign Out */}
+      <div className="px-4 py-4">
+        <button
+          onClick={() => {
+            signOut();
+            window.location.href = "/";
+          }}
+          className="flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-muted/50 dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
+        >
+          <LogOut className="w-3 h-3" />
+          Sign out
+        </button>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="px-4 py-4">
+        <label className="text-[11px] font-mono uppercase tracking-wider text-red-500/70">
+          Danger Zone
+        </label>
+        <p className="mt-1 text-[10px] text-muted-foreground/50 font-mono">
+          Deletes local data and signs you out. Your GitHub account is
+          unaffected.
+        </p>
+        <div className="flex items-center gap-2 mt-2">
+          <button
+            onClick={handleDeleteAccount}
+            className={cn(
+              "flex items-center gap-1.5 border px-3 py-1.5 text-xs font-mono transition-colors cursor-pointer",
+              confirmDelete
+                ? "border-red-500 bg-red-500 text-white hover:bg-red-600"
+                : "border-red-500/30 text-red-500/70 hover:text-red-500 hover:bg-red-500/5"
+            )}
+          >
+            <Trash2 className="w-3 h-3" />
+            {confirmDelete ? "Confirm deletion" : "Delete account data"}
+          </button>
+          {confirmDelete && (
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="text-[10px] font-mono text-muted-foreground underline cursor-pointer"
+            >
+              cancel
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -74,7 +74,7 @@ export async function POST(req: Request) {
   }
 
   const result = streamText({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic("claude-haiku-4-5-20251001"),
     system: `You are an AI assistant built into a GitHub client app's command palette (Cmd+K). You help users perform GitHub actions and navigate the app through natural language.
 
 ${currentUser ? `Authenticated GitHub user: ${currentUser.login}` : ""}
@@ -606,7 +606,7 @@ ${pageContextPrompt}`,
         }),
       }),
     },
-    stopWhen: stepCountIs(6),
+    stopWhen: stepCountIs(3),
   });
 
   return result.toUIMessageStreamResponse();

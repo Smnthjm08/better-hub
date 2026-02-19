@@ -12,9 +12,8 @@ import {
 import { DashboardContent } from "@/components/dashboard/dashboard-content";
 
 export default async function DashboardPage() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const reqHeaders = await headers();
+  const session = await auth.api.getSession({ headers: reqHeaders });
 
   if (!session) return null;
 
@@ -34,6 +33,11 @@ export default async function DashboardPage() {
       getTrendingRepos(undefined, "weekly", 8),
     ]);
 
+  const accounts = await auth.api.listUserAccounts({ headers: reqHeaders });
+  const slackConnected = (accounts as any[]).some(
+    (a: any) => a.providerId === "slack"
+  );
+
   return (
     <DashboardContent
       user={ghUser as any}
@@ -45,6 +49,7 @@ export default async function DashboardPage() {
       contributions={contributions as any}
       activity={activity as any}
       trending={trending as any}
+      slackConnected={slackConnected}
     />
   );
 }

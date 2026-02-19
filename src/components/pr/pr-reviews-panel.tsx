@@ -14,7 +14,8 @@ import {
   FileCode,
   X as XIcon,
 } from "lucide-react";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import type { ReviewThread } from "@/lib/github";
 import { ClientMarkdown } from "@/components/shared/client-markdown";
 import {
@@ -344,7 +345,7 @@ function ThreadCard({
           )}
           {firstComment && (
             <span className="text-[10px] text-muted-foreground/50 shrink-0">
-              {timeAgo(firstComment.createdAt)}
+              <TimeAgo date={firstComment.createdAt} />
             </span>
           )}
           {replies.length > 0 && (
@@ -424,7 +425,7 @@ function ThreadCard({
                   </Link>
                 )}
                 <span className="text-[10px] text-muted-foreground/50">
-                  {timeAgo(comment.createdAt)}
+                  <TimeAgo date={comment.createdAt} />
                 </span>
               </div>
               <div

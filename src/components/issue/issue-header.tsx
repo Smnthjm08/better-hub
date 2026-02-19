@@ -1,8 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { CircleDot, CheckCircle2 } from "lucide-react";
-import { timeAgo } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { CopyLinkButton } from "@/components/shared/copy-link-button";
 
 interface IssueHeaderProps {
@@ -68,7 +68,7 @@ export function IssueHeader({
               <span className="font-mono">{author.login}</span>
             </Link>
             <span className="text-muted-foreground/50">
-              opened {timeAgo(createdAt)}
+              opened <TimeAgo date={createdAt} />
             </span>
           </span>
         )}

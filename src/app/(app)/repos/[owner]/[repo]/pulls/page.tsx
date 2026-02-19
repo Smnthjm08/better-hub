@@ -1,4 +1,4 @@
-import { getRepoPullRequests, searchIssues, enrichPRsWithStats } from "@/lib/github";
+import { getRepoPullRequests, searchIssues, enrichPRsWithStats, enrichPRsWithCheckStatus } from "@/lib/github";
 import { PRsList } from "@/components/pr/prs-list";
 import { fetchPRsByAuthor } from "./actions";
 
@@ -17,12 +17,16 @@ export default async function PullsListPage({
   ]);
 
   const allPRs = [...openPRs, ...closedPRs];
-  const statsMap = await enrichPRsWithStats(owner, repo, allPRs);
+  const [statsMap, checkStatusMap] = await Promise.all([
+    enrichPRsWithStats(owner, repo, allPRs),
+    enrichPRsWithCheckStatus(owner, repo, openPRs as any),
+  ]);
 
   const enrich = (prs: typeof openPRs) =>
     prs.map((pr) => {
       const stats = statsMap.get(pr.number);
-      return stats ? { ...pr, ...stats } : pr;
+      const checkStatus = checkStatusMap.get(pr.number);
+      return { ...pr, ...(stats ?? {}), ...(checkStatus ? { checkStatus } : {}) };
     });
 
   return (

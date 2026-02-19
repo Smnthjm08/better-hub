@@ -20,7 +20,8 @@ import {
   Twitter,
   Users,
 } from "lucide-react";
-import { cn, formatNumber, timeAgo } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { ContributionChart } from "@/components/dashboard/contribution-chart";
 
 export interface UserProfile {
@@ -438,7 +439,7 @@ export function UserProfileContent({
               )}
               {repo.updated_at && (
                 <span className="text-[11px] text-muted-foreground/50 font-mono w-14 text-right">
-                  {timeAgo(repo.updated_at)}
+                  <TimeAgo date={repo.updated_at} />
                 </span>
               )}
               <ChevronRight className="w-3 h-3 text-foreground/15 opacity-0 group-hover:opacity-100 transition-opacity" />

@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FolderOpen, Plus, Pencil, Trash2, Check, X } from "lucide-react";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import {
   createCollectionAction,
   renameCollectionAction,
@@ -185,7 +186,7 @@ export function CollectionsContent({
                         />
                       </div>
                       <span className="text-[10px] font-mono text-muted-foreground/50">
-                        {timeAgo(c.updatedAt)}
+                        <TimeAgo date={c.updatedAt} />
                       </span>
                     </div>
                   )}

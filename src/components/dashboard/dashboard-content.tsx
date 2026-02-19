@@ -12,24 +12,20 @@ import {
   GitFork,
   ChevronRight,
   CheckCircle2,
-  Clock,
-  AlertCircle,
   MessageSquare,
-  FolderGit2,
-  GitCommit,
-  GitBranch,
   Lock,
+  Flame,
+  GitCommit,
+  MessageCircle,
   Plus,
   Trash2,
-  MessageCircle,
-  Settings,
-  Flame,
-  History,
 } from "lucide-react";
-import { cn, timeAgo, formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { toInternalUrl } from "@/lib/github-utils";
-import { ContributionChart } from "./contribution-chart";
+import { authClient } from "@/lib/auth-client";
 import { RecentlyViewed } from "./recently-viewed";
+import { CreateRepoDialog } from "@/components/repo/create-repo-dialog";
 
 interface DashboardContentProps {
   user: {
@@ -57,6 +53,7 @@ interface DashboardContentProps {
   } | null;
   activity: Array<ActivityEvent>;
   trending: Array<TrendingRepoItem>;
+  slackConnected: boolean;
 }
 
 interface ActivityEvent {
@@ -153,6 +150,7 @@ export function DashboardContent({
   contributions,
   activity,
   trending,
+  slackConnected,
 }: DashboardContentProps) {
   const greeting = getGreeting();
   const today = new Date().toLocaleDateString("en-US", {
@@ -171,21 +169,22 @@ export function DashboardContent({
     <div className="flex flex-col flex-1 min-h-0 w-full">
       {/* Header */}
       <div className="shrink-0 pb-3">
-        <div>
-          <h1 className="text-sm font-medium">
-            {greeting}, {user.name || user.login}
-          </h1>
-          <p className="text-[11px] text-muted-foreground font-mono">
-            {today}
-          </p>
-        </div>
+        <h1 className="text-sm font-medium">
+          {greeting}, {user.name || user.login}
+        </h1>
+        <p className="text-[11px] text-muted-foreground font-mono">
+          {today}
+        </p>
       </div>
 
       {/* Two-column layout */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 pb-2">
         {/* Left — overview + work items */}
-        <div className="lg:w-3/5 lg:min-h-0 lg:overflow-hidden flex flex-col gap-3 lg:pr-2">
-          {/* Stats — fixed */}
+        <div className="lg:w-1/2 lg:min-h-0 lg:overflow-hidden flex flex-col gap-3 lg:pr-2">
+          {/* Activity marquee */}
+          <ActivityMarquee activity={activity} />
+
+          {/* Stats */}
           <div className="shrink-0 grid grid-cols-4 gap-3">
             <Stat icon={<Eye className="w-3.5 h-3.5" />} label="Reviews" value={reviewRequests.total_count} accent={reviewRequests.total_count > 0} />
             <Stat icon={<GitPullRequest className="w-3.5 h-3.5" />} label="Open PRs" value={myOpenPRs.total_count} accent={myOpenPRs.total_count > 0} />
@@ -193,9 +192,35 @@ export function DashboardContent({
             <Stat icon={<Bell className="w-3.5 h-3.5" />} label="Notifs" value={notifications.filter((n) => n.unread).length} />
           </div>
 
-          {/* Contribution graph — hidden from overview */}
+          {/* Slack connect card */}
+          {!slackConnected && (
+            <button
+              onClick={() =>
+                authClient.linkSocial({
+                  provider: "slack",
+                  callbackURL: "/dashboard",
+                })
+              }
+              className="shrink-0 flex items-center gap-3 px-4 py-3 border border-dashed border-zinc-300/70 dark:border-zinc-700/50 hover:border-foreground/20 dark:hover:border-foreground/10 transition-colors group cursor-pointer text-left"
+            >
+              <svg className="w-4 h-4 shrink-0 text-muted-foreground/60 group-hover:text-foreground/60 transition-colors" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.27 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.163 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.163 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.163 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.27a2.527 2.527 0 0 1-2.52-2.523 2.527 2.527 0 0 1 2.52-2.52h6.315A2.528 2.528 0 0 1 24 15.163a2.528 2.528 0 0 1-2.522 2.523h-6.315z"/>
+              </svg>
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-mono text-muted-foreground group-hover:text-foreground transition-colors">
+                  Connect Slack
+                </span>
+                <span className="text-[11px] text-muted-foreground/50 ml-2">
+                  Get PR notifications as DMs
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-muted-foreground/40 group-hover:text-foreground/60 transition-colors">
+                Connect →
+              </span>
+            </button>
+          )}
 
-          {/* Tabbed work panel — fills remaining space, content scrolls */}
+          {/* Tabbed work panel */}
           <WorkTabs
             reviewRequests={reviewRequests}
             myOpenPRs={myOpenPRs}
@@ -204,71 +229,13 @@ export function DashboardContent({
           />
         </div>
 
-        {/* Right — repos + activity */}
-        <div className="lg:w-2/5 lg:min-h-0 lg:overflow-hidden flex flex-col gap-3 lg:pl-2">
+        {/* Right — recently viewed + repos/trending */}
+        <div className="lg:w-1/2 lg:min-h-0 lg:overflow-hidden flex flex-col gap-3 lg:pl-2">
           {/* Recently Viewed */}
           <RecentlyViewed />
 
-          {/* Repos */}
-          <section className="shrink border border-border bg-card flex flex-col min-h-0">
-            <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-border">
-              <h2 className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-                Repositories
-              </h2>
-              <button className="ml-auto text-muted-foreground/40 hover:text-muted-foreground transition-colors cursor-pointer">
-                <Settings className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className="overflow-y-auto">
-              {repos.slice(0, 10).map((repo) => (
-                <RepoRow key={repo.id} repo={repo} />
-              ))}
-            </div>
-          </section>
-
-          {/* Trending */}
-          {trending.length > 0 && (
-            <section className="shrink border border-border bg-card flex flex-col min-h-0">
-              <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-border">
-                <Flame className="w-3 h-3 text-orange-500/70" />
-                <h2 className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-                  Trending this week
-                </h2>
-                <Link
-                  href="/trending"
-                  className="ml-auto flex items-center gap-1 text-[10px] font-mono text-muted-foreground/50 hover:text-foreground transition-colors"
-                >
-                  See all
-                  <ChevronRight className="w-3 h-3" />
-                </Link>
-              </div>
-              <div className="overflow-y-auto">
-                {trending.map((repo) => (
-                  <TrendingRow key={repo.id} repo={repo} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Activity timeline */}
-          <section className="flex-1 min-h-0 flex flex-col border border-border bg-card">
-            <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-border">
-              <h2 className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-                Activity
-              </h2>
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {activity.length > 0 ? (
-                activity.map((event) => (
-                  <ActivityRow key={event.id} event={event} />
-                ))
-              ) : (
-                <div className="py-10 text-center">
-                  <p className="text-xs text-muted-foreground/50 font-mono">No recent activity</p>
-                </div>
-              )}
-            </div>
-          </section>
+          {/* Repos + Trending (tabbed) */}
+          <ReposTabs repos={repos} trending={trending} />
         </div>
       </div>
     </div>
@@ -377,6 +344,73 @@ function EmptyTab({ message }: { message: string }) {
   );
 }
 
+/* ── ReposTabs ─────────────────────────────────────────────────────── */
+
+function ReposTabs({
+  repos,
+  trending,
+}: {
+  repos: Array<RepoItem>;
+  trending: Array<TrendingRepoItem>;
+}) {
+  const [tab, setTab] = useState<"repos" | "trending">("repos");
+
+  return (
+    <section className="flex-1 border border-border bg-card flex flex-col min-h-0">
+      <div className="shrink-0 flex items-center border-b border-border">
+        <button
+          onClick={() => setTab("repos")}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer",
+            tab === "repos"
+              ? "text-foreground bg-muted/50 dark:bg-white/[0.04]"
+              : "text-muted-foreground hover:text-foreground/60"
+          )}
+        >
+          Repositories
+        </button>
+        {trending.length > 0 && (
+          <button
+            onClick={() => setTab("trending")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer",
+              tab === "trending"
+                ? "text-foreground bg-muted/50 dark:bg-white/[0.04]"
+                : "text-muted-foreground hover:text-foreground/60"
+            )}
+          >
+            <Flame className="w-3 h-3 text-orange-500/70" />
+            Trending
+          </button>
+        )}
+        {tab === "trending" && (
+          <Link
+            href="/trending"
+            className="ml-auto mr-3 flex items-center gap-1 text-[10px] font-mono text-muted-foreground/50 hover:text-foreground transition-colors"
+          >
+            See all
+            <ChevronRight className="w-3 h-3" />
+          </Link>
+        )}
+        {tab === "repos" && (
+          <div className="ml-auto mr-3">
+            <CreateRepoDialog />
+          </div>
+        )}
+      </div>
+      <div className="overflow-y-auto">
+        {tab === "repos"
+          ? repos.slice(0, 10).map((repo) => (
+              <RepoRow key={repo.id} repo={repo} />
+            ))
+          : trending.map((repo) => (
+              <TrendingRow key={repo.id} repo={repo} />
+            ))}
+      </div>
+    </section>
+  );
+}
+
 /* ── Stat ──────────────────────────────────────────────────────────── */
 
 function Stat({
@@ -479,7 +513,7 @@ function ItemRow({ item, type }: { item: IssueItem; type: "pr" | "issue" }) {
             {repo}#{item.number}
           </span>
           <span className="text-[11px] text-muted-foreground/50">
-            {timeAgo(item.updated_at)}
+            <TimeAgo date={item.updated_at} />
           </span>
           {item.comments > 0 && (
             <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground/50">
@@ -553,7 +587,7 @@ function RepoRow({ repo }: { repo: RepoItem }) {
           )}
           {repo.updated_at && (
             <span className="ml-auto text-muted-foreground/50 font-mono">
-              {timeAgo(repo.updated_at)}
+              <TimeAgo date={repo.updated_at} />
             </span>
           )}
         </div>
@@ -616,92 +650,175 @@ function TrendingRow({ repo }: { repo: TrendingRepoItem }) {
   );
 }
 
-/* ── ActivityRow ───────────────────────────────────────────────────── */
+/* ── ActivityMarquee ───────────────────────────────────────────────── */
 
-function getEventInfo(event: ActivityEvent): { icon: React.ReactNode; text: string } | null {
-  const repo = event.repo.name;
+function getMarqueeItem(event: ActivityEvent): { icon: React.ReactNode; text: string; href: string; time: string } | null {
+  const repoFullName = event.repo?.name;
+  if (!repoFullName) return null;
+  const repoBase = `/repos/${repoFullName}`;
+  const time = event.created_at
+    ? new Date(event.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: false })
+    : "";
+  const p = (event as any).payload ?? {};
+
   switch (event.type) {
     case "PushEvent": {
-      const count = event.payload.size || event.payload.commits?.length || 0;
-      const msg = event.payload.commits?.[0]?.message?.split("\n")[0];
+      const msg = p.commits?.[0]?.message?.split("\n")[0];
+      const count = p.size ?? p.commits?.length ?? 0;
       return {
-        icon: <GitCommit className="w-3.5 h-3.5 text-muted-foreground/60" />,
-        text: msg
-          ? `${msg}${count > 1 ? ` (+${count - 1} more)` : ""}`
-          : `Pushed ${count} commit${count !== 1 ? "s" : ""} to ${repo}`,
+        icon: <GitCommit className="w-3 h-3" />,
+        text: msg || (count > 1 ? `Pushed ${count} commits to ${repoFullName}` : `Pushed to ${repoFullName}`),
+        href: repoBase,
+        time,
       };
     }
     case "PullRequestEvent": {
-      const pr = event.payload.pull_request;
-      const action = event.payload.action === "closed" && pr?.merged ? "merged" : event.payload.action;
+      const pr = p.pull_request;
+      if (!pr?.number) return { icon: <GitPullRequest className="w-3 h-3" />, text: `PR activity in ${repoFullName}`, href: repoBase, time };
+      const action = p.action === "closed" && pr.merged ? "merged" : (p.action || "updated");
       return {
-        icon: <GitPullRequest className={cn("w-3.5 h-3.5", action === "merged" ? "text-purple-500" : action === "opened" ? "text-emerald-500" : "text-muted-foreground/60")} />,
-        text: `${action} PR #${pr?.number}: ${pr?.title}`,
+        icon: <GitPullRequest className={cn("w-3 h-3", action === "merged" ? "text-purple-400" : action === "opened" ? "text-emerald-400" : "")} />,
+        text: `${action} #${pr.number}${pr.title ? `: ${pr.title}` : ""}`,
+        href: `${repoBase}/pulls/${pr.number}`,
+        time,
+      };
+    }
+    case "PullRequestReviewEvent": {
+      const pr = p.pull_request;
+      if (!pr?.number) return { icon: <Eye className="w-3 h-3" />, text: `Reviewed PR in ${repoFullName}`, href: repoBase, time };
+      return {
+        icon: <Eye className="w-3 h-3" />,
+        text: `reviewed #${pr.number}${pr.title ? `: ${pr.title}` : ""}`,
+        href: `${repoBase}/pulls/${pr.number}`,
+        time,
+      };
+    }
+    case "PullRequestReviewCommentEvent": {
+      const pr = p.pull_request;
+      if (!pr?.number) return { icon: <MessageCircle className="w-3 h-3" />, text: `Commented on PR in ${repoFullName}`, href: repoBase, time };
+      return {
+        icon: <MessageCircle className="w-3 h-3" />,
+        text: `commented on review #${pr.number}${pr.title ? `: ${pr.title}` : ""}`,
+        href: `${repoBase}/pulls/${pr.number}`,
+        time,
       };
     }
     case "IssuesEvent": {
-      const issue = event.payload.issue;
+      const issue = p.issue;
+      if (!issue?.number) return { icon: <CircleDot className="w-3 h-3" />, text: `Issue activity in ${repoFullName}`, href: repoBase, time };
+      const action = p.action || "updated";
       return {
-        icon: <CircleDot className={cn("w-3.5 h-3.5", event.payload.action === "opened" ? "text-emerald-500" : "text-muted-foreground/60")} />,
-        text: `${event.payload.action} issue #${issue?.number}: ${issue?.title}`,
+        icon: <CircleDot className={cn("w-3 h-3", action === "opened" ? "text-emerald-400" : "")} />,
+        text: `${action} #${issue.number}${issue.title ? `: ${issue.title}` : ""}`,
+        href: `${repoBase}/issues/${issue.number}`,
+        time,
       };
     }
-    case "IssueCommentEvent":
+    case "IssueCommentEvent": {
+      const issue = p.issue;
+      if (!issue?.number) return { icon: <MessageCircle className="w-3 h-3" />, text: `Commented in ${repoFullName}`, href: repoBase, time };
       return {
-        icon: <MessageCircle className="w-3.5 h-3.5 text-muted-foreground/60" />,
-        text: `Commented on #${event.payload.issue?.number}: ${event.payload.issue?.title}`,
+        icon: <MessageCircle className="w-3 h-3" />,
+        text: `commented on #${issue.number}${issue.title ? `: ${issue.title}` : ""}`,
+        href: `${repoBase}/issues/${issue.number}`,
+        time,
       };
+    }
     case "CreateEvent":
       return {
-        icon: <Plus className="w-3.5 h-3.5 text-muted-foreground/60" />,
-        text: event.payload.ref
-          ? `Created ${event.payload.ref_type} ${event.payload.ref}`
-          : `Created ${event.payload.ref_type || "repository"} ${repo}`,
+        icon: <Plus className="w-3 h-3" />,
+        text: p.ref
+          ? `created ${p.ref_type || "ref"} ${p.ref}`
+          : `created ${p.ref_type || "repo"} ${repoFullName}`,
+        href: repoBase,
+        time,
       };
     case "DeleteEvent":
       return {
-        icon: <Trash2 className="w-3.5 h-3.5 text-muted-foreground/60" />,
-        text: `Deleted ${event.payload.ref_type} ${event.payload.ref}`,
+        icon: <Trash2 className="w-3 h-3" />,
+        text: `deleted ${p.ref_type || "ref"} ${p.ref || ""}`.trim(),
+        href: repoBase,
+        time,
       };
     case "WatchEvent":
       return {
-        icon: <Star className="w-3.5 h-3.5 text-amber-500/70" />,
-        text: `Starred ${repo}`,
+        icon: <Star className="w-3 h-3 text-amber-400" />,
+        text: `starred ${repoFullName}`,
+        href: repoBase,
+        time,
       };
     case "ForkEvent":
       return {
-        icon: <GitFork className="w-3.5 h-3.5 text-muted-foreground/60" />,
-        text: `Forked ${repo}`,
+        icon: <GitFork className="w-3 h-3" />,
+        text: `forked ${repoFullName}`,
+        href: repoBase,
+        time,
       };
-    case "PullRequestReviewEvent":
+    case "ReleaseEvent":
       return {
-        icon: <Eye className="w-3.5 h-3.5 text-muted-foreground/60" />,
-        text: `Reviewed PR #${event.payload.pull_request?.number}: ${event.payload.pull_request?.title}`,
+        icon: <Plus className="w-3 h-3" />,
+        text: `${p.action || "published"} release ${p.release?.tag_name || ""} in ${repoFullName}`.trim(),
+        href: repoBase,
+        time,
+      };
+    case "CommitCommentEvent":
+      return {
+        icon: <MessageCircle className="w-3 h-3" />,
+        text: `commented on commit in ${repoFullName}`,
+        href: repoBase,
+        time,
+      };
+    case "GollumEvent":
+      return {
+        icon: <Plus className="w-3 h-3" />,
+        text: `updated wiki in ${repoFullName}`,
+        href: repoBase,
+        time,
+      };
+    case "MemberEvent":
+      return {
+        icon: <Plus className="w-3 h-3" />,
+        text: `${p.action || "added"} member ${p.member?.login || ""} to ${repoFullName}`.trim(),
+        href: repoBase,
+        time,
+      };
+    case "PublicEvent":
+      return {
+        icon: <Eye className="w-3 h-3" />,
+        text: `made ${repoFullName} public`,
+        href: repoBase,
+        time,
       };
     default:
       return null;
   }
 }
 
-function ActivityRow({ event }: { event: ActivityEvent }) {
-  const info = getEventInfo(event);
-  if (!info) return null;
+function ActivityMarquee({ activity }: { activity: Array<ActivityEvent> }) {
+  const items = activity
+    .map((e) => getMarqueeItem(e))
+    .filter(Boolean) as Array<{ icon: React.ReactNode; text: string; href: string; time: string }>;
+
+  if (items.length === 0) return null;
+
+  const content = items.map((item, i) => (
+    <Link
+      key={i}
+      href={item.href}
+      className="inline-flex items-center gap-1 shrink-0 hover:text-foreground transition-colors"
+    >
+      <span className="text-muted-foreground/30">{item.time}</span>
+      <span className="text-muted-foreground/50">{item.icon}</span>
+      <span>{item.text}</span>
+      <span className="text-muted-foreground/15 mx-1">&middot;</span>
+    </Link>
+  ));
 
   return (
-    <div className="flex items-start gap-3 px-4 py-2.5 border-b border-zinc-100 dark:border-zinc-800/40 last:border-b-0">
-      <span className="mt-0.5 shrink-0">{info.icon}</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs truncate">{info.text}</p>
-        <div className="flex items-center gap-2 mt-px">
-          <span className="text-[11px] font-mono text-muted-foreground/70 truncate">
-            {event.repo.name}
-          </span>
-          {event.created_at && (
-            <span className="text-[11px] text-muted-foreground/50 shrink-0">
-              {timeAgo(event.created_at)}
-            </span>
-          )}
-        </div>
+    <div className="shrink-0 overflow-hidden border border-border bg-card">
+      <div className="flex whitespace-nowrap marquee-track text-[11px] font-mono text-muted-foreground py-2 px-3">
+        {content}
+        {content}
       </div>
     </div>
   );

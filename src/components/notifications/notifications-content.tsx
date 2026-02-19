@@ -13,7 +13,8 @@ import {
   Clock,
   Check,
 } from "lucide-react";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 interface NotificationItem {
   id: string;
@@ -197,7 +198,7 @@ export function NotificationsContent({
                         </span>
                         <span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
                           <Clock className="w-3 h-3" />
-                          {timeAgo(notif.updated_at)}
+                          <TimeAgo date={notif.updated_at} />
                         </span>
                       </div>
                     </div>

@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import {
   ListSearchInput,
   SortCycleButton,
@@ -14,6 +14,10 @@ interface Person {
   avatar_url: string;
   contributions: number;
   weeklyCommits: number[];
+  additions: number;
+  deletions: number;
+  monthAdditions: number;
+  monthDeletions: number;
 }
 
 interface PeopleListProps {
@@ -30,6 +34,16 @@ const SORT_LABELS: Record<SortMode, string> = {
   total: "All-time total",
   alpha: "A → Z",
 };
+
+function DiffBadge({ additions, deletions, className }: { additions: number; deletions: number; className?: string }) {
+  if (additions === 0 && deletions === 0) return null;
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 text-[10px] font-mono tabular-nums", className)}>
+      <span className="text-emerald-600 dark:text-emerald-400">+{formatNumber(additions)}</span>
+      <span className="text-red-500/80 dark:text-red-400/80">&minus;{formatNumber(deletions)}</span>
+    </span>
+  );
+}
 
 function Sparkline({
   data,
@@ -96,7 +110,7 @@ function ContributionBar({
   return (
     <div className="h-1 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
       <div
-        className="h-full rounded-full bg-emerald-500/80 dark:bg-emerald-400/70"
+        className="h-full rounded-full bg-emerald-500/80 dark:bg-emerald-400/70 transition-all duration-300"
         style={{ width: `${pct}%` }}
       />
     </div>
@@ -106,6 +120,8 @@ function ContributionBar({
 export function PeopleList({ owner, repo, people }: PeopleListProps) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortMode>("contributions");
+
+  const isMonthly = sort === "contributions";
 
   // "this month" = last 4 weeks
   const monthTotals = useMemo(() => {
@@ -153,7 +169,6 @@ export function PeopleList({ owner, repo, people }: PeopleListProps) {
       list = list.filter((p) => p.login.toLowerCase().includes(q));
     }
     if (sort === "contributions") {
-      // Sort by this month (last 4 weeks)
       list = [...list].sort(
         (a, b) =>
           (monthTotals[b.login.toLowerCase()] ?? 0) -
@@ -174,6 +189,20 @@ export function PeopleList({ owner, repo, people }: PeopleListProps) {
     isUnfiltered && sort === "contributions" && byContributions.length >= 3;
   const gridPeople = showPodium ? filtered.slice(3) : filtered;
   const podiumPeople = showPodium ? filtered.slice(0, 3) : [];
+
+  // Helper to get sort-aware stats for a person
+  const getStats = (person: Person) => {
+    const commits = isMonthly
+      ? (monthTotals[person.login.toLowerCase()] ?? 0)
+      : person.contributions;
+    const add = isMonthly ? person.monthAdditions : person.additions;
+    const del = isMonthly ? person.monthDeletions : person.deletions;
+    const barValue = isMonthly
+      ? (monthTotals[person.login.toLowerCase()] ?? 0)
+      : person.contributions;
+    const barMax = isMonthly ? maxMonthly : maxContributions;
+    return { commits, add, del, barValue, barMax };
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -208,25 +237,24 @@ export function PeopleList({ owner, repo, people }: PeopleListProps) {
             <div className="grid grid-cols-3 gap-3">
               {podiumPeople.map((person, i) => {
                 const rank = i + 1;
-                const thisMonth =
-                  monthTotals[person.login.toLowerCase()] ?? 0;
+                const { commits, add, del } = getStats(person);
                 return (
                   <Link
                     key={person.login}
                     href={`/repos/${owner}/${repo}/people/${person.login}`}
                     className="group border border-border rounded-md p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors relative overflow-hidden"
                   >
-                    {/* Bottom edge bar — proportion of this month */}
+                    {/* Bottom edge bar */}
                     <div className="absolute bottom-0 left-0 right-0 h-0.5">
                       <div
                         className={cn(
-                          "h-full",
+                          "h-full transition-all duration-300",
                           rank === 1
                             ? "bg-foreground/80"
                             : "bg-foreground/30"
                         )}
                         style={{
-                          width: `${(thisMonth / maxMonthly) * 100}%`,
+                          width: `${(commits / maxMonthly) * 100}%`,
                         }}
                       />
                     </div>
@@ -259,14 +287,12 @@ export function PeopleList({ owner, repo, people }: PeopleListProps) {
                       {/* Sparkline */}
                       <Sparkline data={person.weeklyCommits} size="lg" />
 
-                      {/* Contributions */}
-                      <div className="text-center">
-                        <span className="text-xs font-mono text-foreground">
-                          {thisMonth} this mo.
+                      {/* Stats */}
+                      <div className="text-center space-y-1">
+                        <span className="text-xs font-mono text-foreground tabular-nums">
+                          {commits.toLocaleString()} commits
                         </span>
-                        <span className="block text-[10px] font-mono text-muted-foreground">
-                          {person.contributions.toLocaleString()} total
-                        </span>
+                        <DiffBadge additions={add} deletions={del} className="justify-center" />
                       </div>
                     </div>
                   </Link>
@@ -280,8 +306,7 @@ export function PeopleList({ owner, repo, people }: PeopleListProps) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {gridPeople.map((person) => {
                 const rank = rankMap[person.login.toLowerCase()] ?? 0;
-                const thisMonth =
-                  monthTotals[person.login.toLowerCase()] ?? 0;
+                const { commits, add, del, barValue, barMax } = getStats(person);
                 return (
                   <Link
                     key={person.login}
@@ -290,7 +315,7 @@ export function PeopleList({ owner, repo, people }: PeopleListProps) {
                   >
                     <div className="flex items-center gap-3">
                       {/* Rank */}
-                      <span className="text-[10px] font-mono text-muted-foreground/50 w-5 shrink-0 text-right">
+                      <span className="text-[10px] font-mono text-muted-foreground/50 w-5 shrink-0 text-right tabular-nums">
                         {rank}
                       </span>
 
@@ -309,24 +334,21 @@ export function PeopleList({ owner, repo, people }: PeopleListProps) {
                           <span className="font-mono text-sm truncate">
                             {person.login}
                           </span>
-                          {thisMonth > 0 && (
-                            <span className="text-[10px] font-mono text-emerald-500 dark:text-emerald-400 shrink-0">
-                              {thisMonth} this mo.
-                            </span>
-                          )}
-                          <span className="text-[10px] font-mono text-muted-foreground ml-auto shrink-0">
-                            {person.contributions.toLocaleString()}
+                          <span className="text-[10px] font-mono text-muted-foreground/60 ml-auto shrink-0 tabular-nums">
+                            {commits.toLocaleString()}
                           </span>
                         </div>
 
-                        {/* Sparkline full-width */}
+                        {/* Sparkline */}
                         <Sparkline data={person.weeklyCommits} size="md" />
 
-                        {/* Contribution proportion bar */}
-                        <ContributionBar
-                          value={person.contributions}
-                          max={maxContributions}
-                        />
+                        {/* Stats row: bar + diff */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <ContributionBar value={barValue} max={barMax} />
+                          </div>
+                          <DiffBadge additions={add} deletions={del} />
+                        </div>
                       </div>
                     </div>
                   </Link>

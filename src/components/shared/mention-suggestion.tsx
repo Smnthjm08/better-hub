@@ -133,7 +133,8 @@ export const MentionSuggestionList = forwardRef<
  * `participantsRef` is a ref to the current list of conversation participants.
  */
 export function createSuggestionConfig(
-  participantsRef: React.RefObject<MentionUser[]>
+  participantsRef: React.RefObject<MentionUser[]>,
+  ownerRef?: React.RefObject<string>
 ) {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let reactRoot: Root | null = null;
@@ -175,8 +176,10 @@ export function createSuggestionConfig(
 
     debounceTimer = setTimeout(async () => {
       try {
+        const org = ownerRef?.current || "";
+        const orgParam = org ? `&org=${encodeURIComponent(org)}` : "";
         const res = await fetch(
-          `/api/search-users?q=${encodeURIComponent(query)}&per_page=8`
+          `/api/search-users?q=${encodeURIComponent(query)}&per_page=8${orgParam}`
         );
         if (!res.ok) return;
         const data = await res.json();

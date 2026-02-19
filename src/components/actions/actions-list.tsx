@@ -9,7 +9,8 @@ import {
   Clock,
   ChevronDown,
 } from "lucide-react";
-import { cn, timeAgo, formatDuration } from "@/lib/utils";
+import { cn, formatDuration } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { StatusIcon } from "./status-icon";
 
 interface Workflow {
@@ -212,7 +213,7 @@ export function ActionsList({
                     </span>
                   )}
                   <span className="text-[11px] text-muted-foreground/40">
-                    {timeAgo(run.updated_at)}
+                    <TimeAgo date={run.updated_at} />
                   </span>
                 </div>
               </div>

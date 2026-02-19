@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
-import { timeAgo } from "@/lib/utils";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 interface CommentProps {
   author: {
@@ -42,7 +42,7 @@ export async function Comment({
           </span>
         )}
         <span className="text-[11px] text-muted-foreground/50 ml-auto">
-          {timeAgo(createdAt)}
+          <TimeAgo date={createdAt} />
         </span>
       </div>
       <div className="px-4 py-3">

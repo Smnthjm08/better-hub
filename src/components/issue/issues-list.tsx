@@ -17,7 +17,8 @@ import {
   X,
   ThumbsUp,
 } from "lucide-react";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { CreateIssueDialog } from "./create-issue-dialog";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
@@ -646,7 +647,7 @@ export function IssuesList({
                     </span>
                   )}
                   <span className="text-[11px] text-muted-foreground/50">
-                    opened {timeAgo(issue.created_at)}
+                    opened <TimeAgo date={issue.created_at} />
                   </span>
                 </div>
 
@@ -657,7 +658,7 @@ export function IssuesList({
                   </span>
                   <span className="flex items-center gap-1 text-[11px] text-muted-foreground/50">
                     <Clock className="w-3 h-3" />
-                    {timeAgo(issue.updated_at)}
+                    <TimeAgo date={issue.updated_at} />
                   </span>
                   <span className="flex items-center gap-1 text-[11px] text-muted-foreground/50">
                     <MessageSquare className="w-3 h-3" />

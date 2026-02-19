@@ -8,7 +8,8 @@ import {
   KeyRound,
   ShieldAlert,
 } from "lucide-react";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 
 interface Advisory {
   ghsaId: string;
@@ -268,7 +269,7 @@ export function SecurityView({
                     </span>
                   )}
                   <span className="text-[11px] text-muted-foreground/40">
-                    {timeAgo(alert.createdAt)}
+                    <TimeAgo date={alert.createdAt} />
                   </span>
                 </div>
               </>
@@ -293,7 +294,7 @@ export function SecurityView({
                 </p>
                 <div className="flex items-center gap-3 mt-1">
                   <span className="text-[11px] text-muted-foreground/40">
-                    {timeAgo(alert.createdAt)}
+                    <TimeAgo date={alert.createdAt} />
                   </span>
                 </div>
               </>
@@ -407,11 +408,9 @@ function AdvisoriesSection({
                       {advisory.summary || advisory.ghsaId}
                     </span>
                     <span className="text-[10px] text-muted-foreground/40 shrink-0">
-                      {timeAgo(
-                        advisory.publishedAt ||
+                      <TimeAgo date={advisory.publishedAt ||
                           advisory.updatedAt ||
-                          advisory.createdAt
-                      )}
+                          advisory.createdAt} />
                     </span>
                   </div>
                   <div className="flex items-center gap-3 mt-1">

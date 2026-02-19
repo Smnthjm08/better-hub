@@ -5,10 +5,11 @@ import {
   useEffect,
   useMemo,
   useCallback,
-  useDeferredValue,
+  useRef,
+  memo,
 } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronRight, Search, X } from "lucide-react";
 import { FileTypeIcon } from "@/components/shared/file-icon";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,179 @@ interface FileExplorerTreeProps {
   defaultBranch: string;
 }
 
+// ── Search index (built once per tree) ──────────────────────────────
+
+interface SearchEntry {
+  node: FileTreeNode;
+  nameLower: string;
+  pathLower: string;
+}
+
+function buildSearchIndex(nodes: FileTreeNode[]): SearchEntry[] {
+  const result: SearchEntry[] = [];
+  function walk(list: FileTreeNode[]) {
+    for (const n of list) {
+      if (n.type === "file") {
+        result.push({ node: n, nameLower: n.name.toLowerCase(), pathLower: n.path.toLowerCase() });
+      } else if (n.children) walk(n.children);
+    }
+  }
+  walk(nodes);
+  return result;
+}
+
+// ── Search bar (isolated — typing never re-renders the tree) ────────
+
+function FileSearchBar({
+  searchIndex,
+  owner,
+  repo,
+  defaultBranch,
+}: {
+  searchIndex: SearchEntry[];
+  owner: string;
+  repo: string;
+  defaultBranch: string;
+}) {
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const versionRef = useRef(0);
+
+  const [inputValue, setInputValue] = useState("");
+  const [suggestions, setSuggestions] = useState<FileTreeNode[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+
+  const showDropdown = inputValue.trim().length > 0;
+
+  // Debounced search
+  useEffect(() => {
+    const q = inputValue.trim().toLowerCase();
+    if (!q) {
+      setSuggestions([]);
+      versionRef.current++;
+      return;
+    }
+    const version = ++versionRef.current;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      if (version !== versionRef.current) return;
+      const nameStarts: FileTreeNode[] = [];
+      const nameContains: FileTreeNode[] = [];
+      const pathContains: FileTreeNode[] = [];
+      for (const entry of searchIndex) {
+        if (entry.nameLower.startsWith(q)) nameStarts.push(entry.node);
+        else if (entry.nameLower.includes(q)) nameContains.push(entry.node);
+        else if (entry.pathLower.includes(q)) pathContains.push(entry.node);
+        if (nameStarts.length + nameContains.length + pathContains.length >= 50) break;
+      }
+      if (version !== versionRef.current) return;
+      setSuggestions([...nameStarts, ...nameContains, ...pathContains].slice(0, 15));
+      setSelectedIdx(0);
+    }, 100);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [inputValue, searchIndex]);
+
+  // Scroll selected into view
+  useEffect(() => {
+    if (!listRef.current) return;
+    const el = listRef.current.children[selectedIdx] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [selectedIdx]);
+
+  const navigate = useCallback(
+    (filePath: string) => {
+      setInputValue("");
+      setSuggestions([]);
+      router.push(`/repos/${owner}/${repo}/blob/${defaultBranch}/${encodeFilePath(filePath)}`);
+    },
+    [router, owner, repo, defaultBranch]
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!showDropdown) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIdx((i) => Math.min(i + 1, suggestions.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIdx((i) => Math.max(i - 1, 0));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const item = suggestions[selectedIdx];
+        if (item) navigate(item.path);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setInputValue("");
+        inputRef.current?.blur();
+      }
+    },
+    [showDropdown, suggestions, selectedIdx, navigate]
+  );
+
+  return (
+    <div className="shrink-0 p-2 relative">
+      <div className="relative">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50" />
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Go to file..."
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="w-full text-[11px] font-mono pl-7 pr-7 py-1.5 bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-zinc-400/30 dark:focus:ring-zinc-600/30 placeholder:text-muted-foreground/50"
+        />
+        {inputValue && (
+          <button
+            onClick={() => { setInputValue(""); setSuggestions([]); }}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+
+      {showDropdown && (
+        <div
+          ref={listRef}
+          className="absolute left-2 right-2 top-full mt-0.5 z-30 max-h-72 overflow-y-auto bg-background border border-border rounded-md shadow-lg"
+        >
+          {suggestions.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground/50 font-mono px-3 py-2">
+              {inputValue.trim() ? "No files found" : "Type to search..."}
+            </p>
+          ) : (
+            suggestions.map((node, i) => (
+              <button
+                key={node.path}
+                onMouseDown={(e) => { e.preventDefault(); navigate(node.path); }}
+                onMouseEnter={() => setSelectedIdx(i)}
+                className={cn(
+                  "flex items-center gap-2 w-full text-left px-2.5 py-1.5 transition-colors cursor-pointer",
+                  i === selectedIdx
+                    ? "bg-muted/70 dark:bg-zinc-800/50"
+                    : "hover:bg-muted/40 dark:hover:bg-zinc-800/30"
+                )}
+              >
+                <FileTypeIcon name={node.name} type="file" className="w-3.5 h-3.5 shrink-0" />
+                <span className="text-[11px] font-mono truncate">
+                  <span className="text-foreground">{node.name}</span>
+                  <span className="text-muted-foreground/40 ml-1.5">{node.path}</span>
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ──────────────────────────────────────────────────
+
 export function FileExplorerTree({
   tree,
   owner,
@@ -30,26 +204,18 @@ export function FileExplorerTree({
 }: FileExplorerTreeProps) {
   const pathname = usePathname();
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
-  const [filterQuery, setFilterQuery] = useState("");
-  const deferredQuery = useDeferredValue(filterQuery);
-  const isStale = deferredQuery !== filterQuery;
 
-  // Determine the current file/dir path from the URL
+  const searchIndex = useMemo(() => buildSearchIndex(tree), [tree]);
+
   const currentPath = useMemo(() => {
     const base = `/repos/${owner}/${repo}`;
     const blobPrefix = `${base}/blob/${defaultBranch}/`;
     const treePrefix = `${base}/tree/${defaultBranch}/`;
-
-    if (pathname.startsWith(blobPrefix)) {
-      return decodeURIComponent(pathname.slice(blobPrefix.length));
-    }
-    if (pathname.startsWith(treePrefix)) {
-      return decodeURIComponent(pathname.slice(treePrefix.length));
-    }
+    if (pathname.startsWith(blobPrefix)) return decodeURIComponent(pathname.slice(blobPrefix.length));
+    if (pathname.startsWith(treePrefix)) return decodeURIComponent(pathname.slice(treePrefix.length));
     return null;
   }, [pathname, owner, repo, defaultBranch]);
 
-  // Auto-expand ancestors of the current path
   useEffect(() => {
     if (!currentPath) return;
     const ancestors = getAncestorPaths(currentPath);
@@ -64,110 +230,40 @@ export function FileExplorerTree({
   const toggleExpand = useCallback((path: string) => {
     setExpandedPaths((prev) => {
       const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
       return next;
     });
   }, []);
 
-  // Filter tree using the deferred (non-blocking) query
-  const filteredTree = useMemo(() => {
-    if (!deferredQuery.trim()) return tree;
-    const query = deferredQuery.toLowerCase();
-
-    function filterNodes(nodes: FileTreeNode[]): FileTreeNode[] {
-      const result: FileTreeNode[] = [];
-      for (const node of nodes) {
-        if (node.type === "file") {
-          if (
-            node.name.toLowerCase().includes(query) ||
-            node.path.toLowerCase().includes(query)
-          ) {
-            result.push(node);
-          }
-        } else if (node.children) {
-          const filteredChildren = filterNodes(node.children);
-          if (filteredChildren.length > 0) {
-            result.push({ ...node, children: filteredChildren });
-          }
-        }
-      }
-      return result;
-    }
-
-    return filterNodes(tree);
-  }, [tree, deferredQuery]);
-
-  // When filtering, auto-expand all dirs in filtered results
-  const effectiveExpanded = useMemo(() => {
-    if (!deferredQuery.trim()) return expandedPaths;
-    const allDirs = new Set(expandedPaths);
-    function collectDirs(nodes: FileTreeNode[]) {
-      for (const node of nodes) {
-        if (node.type === "dir") {
-          allDirs.add(node.path);
-          if (node.children) collectDirs(node.children);
-        }
-      }
-    }
-    collectDirs(filteredTree);
-    return allDirs;
-  }, [filteredTree, deferredQuery, expandedPaths]);
-
   return (
     <div className="flex flex-col h-full">
-      <div className="shrink-0 p-2">
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50" />
-          <input
-            type="text"
-            placeholder="Filter files..."
-            value={filterQuery}
-            onChange={(e) => setFilterQuery(e.target.value)}
-            className="w-full text-[11px] font-mono pl-7 pr-7 py-1.5 bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-zinc-400/30 dark:focus:ring-zinc-600/30 placeholder:text-muted-foreground/50"
+      <FileSearchBar
+        searchIndex={searchIndex}
+        owner={owner}
+        repo={repo}
+        defaultBranch={defaultBranch}
+      />
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">
+        {tree.map((node) => (
+          <TreeNode
+            key={node.path}
+            node={node}
+            depth={0}
+            owner={owner}
+            repo={repo}
+            defaultBranch={defaultBranch}
+            currentPath={currentPath}
+            expandedPaths={expandedPaths}
+            onToggle={toggleExpand}
           />
-          {filterQuery && (
-            <button
-              onClick={() => setFilterQuery("")}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-      </div>
-      <div
-        className={cn(
-          "flex-1 overflow-y-auto overflow-x-hidden py-1 transition-opacity duration-100",
-          isStale && "opacity-60"
-        )}
-      >
-        {filteredTree.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground/60 font-mono px-3 py-2">
-            No matches
-          </p>
-        ) : (
-          filteredTree.map((node) => (
-            <TreeNode
-              key={node.path}
-              node={node}
-              depth={0}
-              owner={owner}
-              repo={repo}
-              defaultBranch={defaultBranch}
-              currentPath={currentPath}
-              expandedPaths={effectiveExpanded}
-              onToggle={toggleExpand}
-            />
-          ))
-        )}
+        ))}
       </div>
     </div>
   );
 }
+
+// ── Tree node (memoized) ────────────────────────────────────────────
 
 interface TreeNodeProps {
   node: FileTreeNode;
@@ -180,7 +276,7 @@ interface TreeNodeProps {
   onToggle: (path: string) => void;
 }
 
-function TreeNode({
+const TreeNode = memo(function TreeNode({
   node,
   depth,
   owner,
@@ -201,11 +297,10 @@ function TreeNode({
           onClick={() => onToggle(node.path)}
           className={cn(
             "flex items-center gap-1.5 w-full text-left py-[3px] pr-2 hover:bg-muted/50 dark:hover:bg-white/[0.02] transition-colors group relative",
-            isActive && "bg-muted/70 dark:bg-white/[0.04]"
+            isActive && "bg-muted/70 dark:bg-zinc-800/50"
           )}
           style={{ paddingLeft }}
         >
-          {/* Indent guides */}
           {Array.from({ length: depth }).map((_, i) => (
             <span
               key={i}
@@ -259,11 +354,10 @@ function TreeNode({
       prefetch={true}
       className={cn(
         "flex items-center gap-1.5 py-[3px] pr-2 hover:bg-muted/50 dark:hover:bg-white/[0.02] transition-colors relative",
-        isActive && "bg-muted/70 dark:bg-white/[0.04]"
+        isActive && "bg-muted/70 dark:bg-zinc-800/50"
       )}
       style={{ paddingLeft: paddingLeft + 15 }}
     >
-      {/* Indent guides */}
       {Array.from({ length: depth }).map((_, i) => (
         <span
           key={i}
@@ -271,7 +365,6 @@ function TreeNode({
           style={{ left: i * 16 + 16 }}
         />
       ))}
-      {/* Active indicator bar */}
       {isActive && (
         <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-foreground" />
       )}
@@ -283,4 +376,4 @@ function TreeNode({
       <span className="text-[12px] font-mono truncate">{node.name}</span>
     </Link>
   );
-}
+});

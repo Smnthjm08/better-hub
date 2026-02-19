@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useRef, useCallback, useEffect } from "react";
+import { useState, useTransition, useRef, useCallback, useEffect, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -10,7 +10,8 @@ import {
   type DiffSegment,
 } from "@/lib/github-utils";
 import type { SyntaxToken } from "@/lib/shiki";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import Image from "next/image";
 import {
   File,
@@ -22,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   WrapText,
   Plus,
   X,
@@ -39,6 +41,7 @@ import {
   FileCode,
   Ghost,
   GitCommitHorizontal,
+  Search,
 } from "lucide-react";
 import {
   addPRReviewComment,
@@ -468,50 +471,6 @@ function SingleFileDiff({
 }) {
   const lines = file.patch ? parseDiffPatch(file.patch) : [];
   const diffContainerRef = useRef<HTMLDivElement>(null);
-  const overscrollRef = useRef(0);
-  const overscrollCooldown = useRef(false);
-
-  // Reset overscroll accumulator when file changes
-  useEffect(() => {
-    overscrollRef.current = 0;
-    overscrollCooldown.current = false;
-  }, [index]);
-
-  // Overscroll → navigate to next/prev file
-  useEffect(() => {
-    const el = diffContainerRef.current;
-    if (!el) return;
-    const THRESHOLD = 150; // px of accumulated overscroll before navigating
-
-    const handleWheel = (e: WheelEvent) => {
-      if (overscrollCooldown.current) return;
-      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-      const atTop = el.scrollTop <= 1;
-
-      if (e.deltaY > 0 && atBottom && index < total - 1) {
-        overscrollRef.current += e.deltaY;
-        if (overscrollRef.current >= THRESHOLD) {
-          overscrollCooldown.current = true;
-          overscrollRef.current = 0;
-          onNext();
-          setTimeout(() => { overscrollCooldown.current = false; }, 300);
-        }
-      } else if (e.deltaY < 0 && atTop && index > 0) {
-        overscrollRef.current += Math.abs(e.deltaY);
-        if (overscrollRef.current >= THRESHOLD) {
-          overscrollCooldown.current = true;
-          overscrollRef.current = 0;
-          onPrev();
-          setTimeout(() => { overscrollCooldown.current = false; }, 300);
-        }
-      } else {
-        overscrollRef.current = 0;
-      }
-    };
-
-    el.addEventListener("wheel", handleWheel, { passive: true });
-    return () => el.removeEventListener("wheel", handleWheel);
-  }, [index, total, onNext, onPrev]);
 
   useEffect(() => {
     if (scrollToLine == null || !diffContainerRef.current) return;
@@ -548,6 +507,127 @@ function SingleFileDiff({
   const [isLoadingExpand, setIsLoadingExpand] = useState<number | null>(null);
   const [showFullFile, setShowFullFile] = useState(false);
   const [isLoadingFullFile, setIsLoadingFullFile] = useState(false);
+
+  // Search state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [matchCase, setMatchCase] = useState(false);
+  const [currentSearchIdx, setCurrentSearchIdx] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const isHoveringDiffRef = useRef(false);
+  const searchMatchesRef = useRef<number[]>([]);
+
+  // Reset search when file changes
+  const prevFilenameRef = useRef(file.filename);
+  if (prevFilenameRef.current !== file.filename) {
+    prevFilenameRef.current = file.filename;
+    if (searchOpen) {
+      setSearchOpen(false);
+      setSearchQuery("");
+      setCurrentSearchIdx(-1);
+    }
+  }
+
+  // Derive matches (pure computation, no effect needed)
+  const searchMatches = useMemo(() => {
+    if (!searchOpen || !searchQuery) return [];
+    const query = matchCase ? searchQuery : searchQuery.toLowerCase();
+    const found: number[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].type === "header") continue;
+      const content = matchCase ? lines[i].content : lines[i].content.toLowerCase();
+      let pos = 0;
+      while (true) {
+        const idx = content.indexOf(query, pos);
+        if (idx === -1) break;
+        found.push(i);
+        pos = idx + query.length;
+      }
+    }
+    return found;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchOpen, searchQuery, matchCase, file.patch]);
+
+  // Reset currentSearchIdx when matches change
+  if (searchMatches !== searchMatchesRef.current) {
+    searchMatchesRef.current = searchMatches;
+    const nextIdx = searchMatches.length > 0 ? 0 : -1;
+    if (currentSearchIdx !== nextIdx) {
+      setCurrentSearchIdx(nextIdx);
+    }
+  }
+
+  // Highlight matching rows
+  useEffect(() => {
+    if (!diffContainerRef.current) return;
+    diffContainerRef.current.querySelectorAll("tr[data-diff-idx]").forEach((el) => {
+      el.classList.remove("diff-search-match", "diff-search-match-active");
+    });
+    if (searchMatches.length === 0 || currentSearchIdx < 0) return;
+    const matchedIndices = new Set(searchMatches);
+    for (const idx of matchedIndices) {
+      const el = diffContainerRef.current.querySelector(`tr[data-diff-idx="${idx}"]`);
+      el?.classList.add("diff-search-match");
+    }
+    const activeIdx = searchMatches[currentSearchIdx];
+    if (activeIdx !== undefined) {
+      const activeEl = diffContainerRef.current.querySelector(`tr[data-diff-idx="${activeIdx}"]`);
+      if (activeEl) {
+        activeEl.classList.remove("diff-search-match");
+        activeEl.classList.add("diff-search-match-active");
+        activeEl.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    }
+  }, [searchMatches, currentSearchIdx]);
+
+  // Cmd+F intercept
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "f" && isHoveringDiffRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSearchOpen(true);
+        setTimeout(() => searchInputRef.current?.focus(), 0);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
+  }, []);
+
+  const closeDiffSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setCurrentSearchIdx(-1);
+    if (diffContainerRef.current) {
+      diffContainerRef.current.querySelectorAll("tr[data-diff-idx]").forEach((el) => {
+        el.classList.remove("diff-search-match", "diff-search-match-active");
+      });
+    }
+  }, []);
+
+  const matchCount = searchMatches.length;
+
+  const goToNextSearch = useCallback(() => {
+    if (matchCount === 0) return;
+    setCurrentSearchIdx((prev) => (prev + 1) % matchCount);
+  }, [matchCount]);
+
+  const goToPrevSearch = useCallback(() => {
+    if (matchCount === 0) return;
+    setCurrentSearchIdx((prev) => (prev - 1 + matchCount) % matchCount);
+  }, [matchCount]);
+
+  const handleDiffSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      closeDiffSearch();
+    } else if (e.key === "Enter" && e.shiftKey) {
+      e.preventDefault();
+      goToPrevSearch();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      goToNextSearch();
+    }
+  }, [closeDiffSearch, goToNextSearch, goToPrevSearch]);
 
   // Compute hunk info for expand context
   const hunkInfos = lines.reduce<{ index: number; newStart: number; newCount: number; endNewLine: number }[]>(
@@ -754,9 +834,14 @@ function SingleFileDiff({
   };
 
   return (
-    <>
+    <div
+      className="flex flex-col flex-1 min-h-0"
+      onMouseEnter={() => { isHoveringDiffRef.current = true; }}
+      onMouseLeave={() => { isHoveringDiffRef.current = false; }}
+    >
       {/* Sticky file header */}
-      <div className="shrink-0 sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm border-b border-border">
+      <div className="shrink-0 sticky top-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm border-b border-border">
+        <div className="flex items-center gap-2 px-3 py-1.5">
         <FileIcon
           className={cn("w-3.5 h-3.5 shrink-0", getFileIconColor(file.status))}
         />
@@ -853,6 +938,68 @@ function SingleFileDiff({
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
+        </div>
+
+        {/* Inline search bar */}
+        {searchOpen && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-border/50">
+            <Search className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleDiffSearchKeyDown}
+              placeholder="Find in diff..."
+              className="flex-1 bg-transparent text-xs font-mono text-foreground placeholder:text-muted-foreground/40 outline-none min-w-0"
+              autoFocus
+            />
+            {searchQuery && (
+              <span className="text-[10px] font-mono text-muted-foreground/50 tabular-nums shrink-0">
+                {searchMatches.length > 0
+                  ? `${currentSearchIdx + 1} of ${searchMatches.length}`
+                  : "No results"}
+              </span>
+            )}
+            <div className="flex items-center gap-0.5 shrink-0">
+              <button
+                onClick={goToPrevSearch}
+                disabled={searchMatches.length === 0}
+                className="p-0.5 text-muted-foreground/50 hover:text-foreground disabled:opacity-30 transition-colors cursor-pointer"
+                title="Previous match (Shift+Enter)"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={goToNextSearch}
+                disabled={searchMatches.length === 0}
+                className="p-0.5 text-muted-foreground/50 hover:text-foreground disabled:opacity-30 transition-colors cursor-pointer"
+                title="Next match (Enter)"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setMatchCase(!matchCase)}
+                className={cn(
+                  "px-1 py-0.5 rounded text-[10px] font-mono font-bold transition-colors cursor-pointer",
+                  matchCase
+                    ? "text-foreground bg-zinc-200/60 dark:bg-zinc-700/50"
+                    : "text-muted-foreground/40 hover:text-foreground"
+                )}
+                title="Match case"
+              >
+                Aa
+              </button>
+              <button
+                onClick={closeDiffSearch}
+                className="p-0.5 text-muted-foreground/50 hover:text-foreground transition-colors cursor-pointer"
+                title="Close (Escape)"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Scrollable diff content */}
@@ -941,6 +1088,7 @@ function SingleFileDiff({
                 return (
                   <DiffLineRow
                     key={i}
+                    diffIdx={i}
                     line={line}
                     wordWrap={wordWrap}
                     canComment={canComment}
@@ -1010,12 +1158,13 @@ function SingleFileDiff({
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
 function DiffLineRow({
   line,
+  diffIdx,
   wordWrap,
   canComment,
   inlineComments,
@@ -1044,6 +1193,7 @@ function DiffLineRow({
   participants,
 }: {
   line: DiffLine;
+  diffIdx: number;
   wordWrap: boolean;
   canComment: boolean;
   inlineComments: ReviewComment[];
@@ -1136,6 +1286,7 @@ function DiffLineRow({
     <>
       <tr
         data-line={lineNum}
+        data-diff-idx={diffIdx}
         onMouseEnter={onHoverLine}
         className={cn(
           "group/line hover:brightness-95 dark:hover:brightness-110 transition-[filter] duration-75",
@@ -1377,6 +1528,7 @@ function InlineCommentForm({
           autoFocus
           compact
           participants={participants}
+          owner={owner}
           className="border-0 rounded-none focus-within:border-0 focus-within:ring-0"
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -1503,8 +1655,17 @@ function InlineCommentDisplay({
   const [result, setResult] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [commitMessage, setCommitMessage] = useState(`Apply suggestion to ${filename}`);
 
+  // Persist committed state across refreshes via sessionStorage
+  const storageKey = `committed_suggestion_${comment.id}`;
+  const [alreadyCommitted, setAlreadyCommitted] = useState(false);
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(storageKey) === "1") setAlreadyCommitted(true);
+    } catch {}
+  }, [storageKey]);
+
   const parsed = parseSuggestionBlock(comment.body);
-  const canCommit = !!(owner && repo && pullNumber && headBranch && comment.line);
+  const canCommit = !!(owner && repo && pullNumber && headBranch && comment.line && !alreadyCommitted);
 
   const handleCommitSuggestion = (suggestion: string, message: string) => {
     if (!canCommit) return;
@@ -1527,6 +1688,10 @@ function InlineCommentDisplay({
         setResult({ type: "error", msg: res.error });
       } else {
         setResult({ type: "success", msg: "Committed" });
+        setAlreadyCommitted(true);
+        try { sessionStorage.setItem(storageKey, "1"); } catch {}
+        // Give GitHub time to process the new commit before refreshing
+        await new Promise((r) => setTimeout(r, 1500));
         router.refresh();
       }
     });
@@ -1558,7 +1723,7 @@ function InlineCommentDisplay({
           <span className="text-xs font-medium text-foreground/70">ghost</span>
         )}
         <span className="text-[10px] text-muted-foreground/50">
-          {timeAgo(comment.created_at)}
+          <TimeAgo date={comment.created_at} />
         </span>
         {collapsed && (
           <span className="text-[10px] text-muted-foreground/50 truncate flex-1 min-w-0">
@@ -1587,15 +1752,20 @@ function InlineCommentDisplay({
                 <pre className="px-3 py-2 text-[12.5px] font-mono leading-[20px] bg-emerald-500/[0.04] dark:bg-emerald-400/[0.04] text-emerald-700 dark:text-emerald-300 overflow-x-auto">
                   {parsed.suggestion}
                 </pre>
-                {canCommit && canWrite && (
+                {(alreadyCommitted || result?.type === "success") ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/[0.06] dark:bg-emerald-400/[0.06]">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                    <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">
+                      Suggestion committed
+                    </span>
+                    {isPending && (
+                      <Loader2 className="w-3 h-3 animate-spin text-muted-foreground/50 ml-auto" />
+                    )}
+                  </div>
+                ) : canCommit && canWrite ? (
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-50/50 dark:bg-zinc-900/20">
-                    {result && (
-                      <span
-                        className={cn(
-                          "text-[10px] font-mono",
-                          result.type === "error" ? "text-red-500" : "text-emerald-500"
-                        )}
-                      >
+                    {result?.type === "error" && (
+                      <span className="text-[10px] font-mono text-red-500">
                         {result.msg}
                       </span>
                     )}
@@ -1603,7 +1773,7 @@ function InlineCommentDisplay({
                       type="text"
                       value={commitMessage}
                       onChange={(e) => setCommitMessage(e.target.value)}
-                      disabled={isPending || result?.type === "success"}
+                      disabled={isPending}
                       className={cn(
                         "flex-1 min-w-0 px-2 py-1 text-[10px] font-mono",
                         "bg-transparent border border-border rounded-md",
@@ -1614,7 +1784,7 @@ function InlineCommentDisplay({
                     />
                     <button
                       onClick={() => handleCommitSuggestion(parsed.suggestion, commitMessage)}
-                      disabled={isPending || result?.type === "success"}
+                      disabled={isPending}
                       className={cn(
                         "flex items-center gap-1 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider",
                         "border border-border",
@@ -1625,15 +1795,13 @@ function InlineCommentDisplay({
                     >
                       {isPending ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : result?.type === "success" ? (
-                        <Check className="w-3 h-3" />
                       ) : (
                         <Check className="w-3 h-3" />
                       )}
                       Commit suggestion
                     </button>
                   </div>
-                )}
+                ) : null}
               </div>
 
               {parsed.after && (
@@ -2059,7 +2227,7 @@ function SidebarCommits({
                   )}
                   {date && (
                     <span className="text-[9px] text-muted-foreground/40 ml-auto shrink-0">
-                      {timeAgo(date)}
+                      <TimeAgo date={date} />
                     </span>
                   )}
                 </div>

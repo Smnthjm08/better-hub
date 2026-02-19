@@ -110,8 +110,8 @@ export default async function RepoPage({
       />
 
       {readme && (
-        <div className="mt-6 border border-border">
-          <div className="px-4 py-2 border-b border-border bg-muted/30 dark:bg-white/[0.02]">
+        <div className="mt-6 border border-border rounded-md overflow-hidden dark:bg-zinc-900/60">
+          <div className="px-4 py-2 border-b border-border bg-muted/30 dark:bg-zinc-800/50">
             <span className="text-[11px] font-mono text-muted-foreground">
               README.md
             </span>

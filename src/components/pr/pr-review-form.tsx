@@ -116,6 +116,7 @@ export function PRReviewForm({ owner, repo, pullNumber, participants }: PRReview
               rows={4}
               autoFocus
               participants={participants}
+              owner={owner}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();

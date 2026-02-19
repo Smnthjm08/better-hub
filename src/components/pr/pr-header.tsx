@@ -5,14 +5,17 @@ import {
   GitMerge,
   XCircle,
   GitBranch,
-  ArrowLeft,
+  ArrowRight,
   Check,
   X,
 } from "lucide-react";
-import { timeAgo } from "@/lib/utils";
+import type { CheckStatus } from "@/lib/github";
+import { CheckStatusBadge } from "@/components/pr/check-status-badge";
 import { cn } from "@/lib/utils";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { CopyLinkButton } from "@/components/shared/copy-link-button";
 import { RefreshButton } from "@/components/shared/refresh-button";
+import { EditablePRTitle } from "@/components/pr/editable-pr-title";
 
 interface PRHeaderProps {
   title: string;
@@ -29,9 +32,11 @@ interface PRHeaderProps {
   changedFiles: number;
   labels: Array<{ name?: string; color?: string }>;
   reviewStatuses?: Array<{ login: string; avatar_url: string; state: string }>;
+  checkStatus?: CheckStatus;
   actions?: React.ReactNode;
   owner: string;
   repo: string;
+  canEdit?: boolean;
 }
 
 export function PRHeader({
@@ -49,9 +54,11 @@ export function PRHeader({
   changedFiles,
   labels,
   reviewStatuses,
+  checkStatus,
   actions,
   owner,
   repo,
+  canEdit = false,
 }: PRHeaderProps) {
   const statusConfig = merged
     ? {
@@ -87,10 +94,13 @@ export function PRHeader({
     <div className="pb-3 mb-0">
       {/* Title + actions */}
       <div className="flex items-start gap-3 mb-2.5">
-        <h1 className="text-base font-medium tracking-tight leading-snug flex-1 min-w-0">
-          {title}{" "}
-          <span className="text-muted-foreground/50 font-normal">#{number}</span>
-        </h1>
+        <EditablePRTitle
+          title={title}
+          number={number}
+          owner={owner}
+          repo={repo}
+          canEdit={canEdit}
+        />
         {actions && <div className="shrink-0">{actions}</div>}
       </div>
 
@@ -125,7 +135,7 @@ export function PRHeader({
         )}
 
         <span className="text-muted-foreground/50 text-[10px]">
-          {timeAgo(createdAt)}
+          <TimeAgo date={createdAt} />
         </span>
 
         {/* Separator */}
@@ -134,9 +144,9 @@ export function PRHeader({
         {/* Branch */}
         <span className="flex items-center gap-1 font-mono text-muted-foreground/60 text-[10px]">
           <GitBranch className="w-3 h-3" />
-          <span className="text-foreground/70">{headBranch}</span>
-          <ArrowLeft className="w-2.5 h-2.5 text-muted-foreground/40" />
-          <span>{baseBranch}</span>
+          <span>{headBranch}</span>
+          <ArrowRight className="w-2.5 h-2.5 text-muted-foreground/40" />
+          <span className="text-foreground/70">{baseBranch}</span>
         </span>
 
         {/* Separator */}
@@ -150,6 +160,13 @@ export function PRHeader({
             {changedFiles} file{changedFiles !== 1 ? "s" : ""}
           </span>
         </span>
+
+        {checkStatus && (
+          <>
+            <span className="w-px h-3 bg-zinc-200/80 dark:bg-zinc-800/80" />
+            <CheckStatusBadge checkStatus={checkStatus} owner={owner} repo={repo} />
+          </>
+        )}
 
         <CopyLinkButton owner={owner} repo={repo} number={number} type="pulls" />
         <RefreshButton />

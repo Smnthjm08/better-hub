@@ -8,6 +8,9 @@ import {
   getRepo,
   getAuthenticatedUser,
   extractRepoPermissions,
+  getOctokit,
+  fetchCheckStatusForRef,
+  type CheckStatus,
 } from "@/lib/github";
 import { extractParticipants } from "@/lib/github-utils";
 import { highlightDiffLines, type SyntaxToken } from "@/lib/shiki";
@@ -56,6 +59,18 @@ export default async function PRDetailPage({
   const permissions = extractRepoPermissions(repoData);
   const canWrite = permissions.push || permissions.admin || permissions.maintain;
   const canTriage = canWrite || permissions.triage;
+
+  // Fetch check status for open PRs
+  let checkStatus: CheckStatus | undefined;
+  if (pr && pr.state === "open" && !pr.merged_at) {
+    try {
+      const octokit = await getOctokit();
+      const cs = await fetchCheckStatusForRef(octokit, owner, repo, pr.head.sha);
+      if (cs) checkStatus = cs;
+    } catch {
+      // Ignore check status errors
+    }
+  }
 
   // Fetch session unconditionally (used for collections + embedding trigger)
   const session = await auth.api.getSession({ headers: await headers() });
@@ -340,8 +355,10 @@ export default async function PRDetailPage({
               typeof l === "string" ? { name: l } : l
             )}
             reviewStatuses={reviewStatuses}
+            checkStatus={checkStatus}
             owner={owner}
             repo={repo}
+            canEdit={canWrite || pr.user?.login === currentUser?.login}
             actions={
               <div className="flex items-center gap-2">
                 <AddToCollection
@@ -411,6 +428,7 @@ export default async function PRDetailPage({
           repo={repo}
           pullNumber={pullNumber}
           userAvatarUrl={currentUser?.avatar_url}
+          userName={currentUser?.login}
           participants={participants}
         />
       }
@@ -444,6 +462,7 @@ export default async function PRDetailPage({
         emptyTitle: "Ghost",
         emptyDescription:
           "Ask questions about changes, get explanations, or find potential issues",
+        repoFileSearch: { owner, repo, ref: pr.head.ref },
       }}
     />
     </>

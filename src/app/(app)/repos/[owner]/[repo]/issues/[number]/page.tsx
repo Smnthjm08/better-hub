@@ -1,4 +1,4 @@
-import { getIssue, getIssueComments, getAuthenticatedUser } from "@/lib/github";
+import { getIssue, getIssueComments, getAuthenticatedUser, getRepo } from "@/lib/github";
 import { extractParticipants } from "@/lib/github-utils";
 import { IssueHeader } from "@/components/issue/issue-header";
 import { IssueDetailLayout } from "@/components/issue/issue-detail-layout";
@@ -20,10 +20,11 @@ export default async function IssueDetailPage({
   const { owner, repo, number: numStr } = await params;
   const issueNumber = parseInt(numStr, 10);
 
-  const [issue, comments, currentUser] = await Promise.all([
+  const [issue, comments, currentUser, repoData] = await Promise.all([
     getIssue(owner, repo, issueNumber),
     getIssueComments(owner, repo, issueNumber),
     getAuthenticatedUser(),
+    getRepo(owner, repo),
   ]);
 
   if (!issue) {
@@ -140,7 +141,9 @@ export default async function IssueDetailPage({
           owner={owner}
           repo={repo}
           issueNumber={issueNumber}
+          issueState={issue.state}
           userAvatarUrl={currentUser?.avatar_url}
+          userName={currentUser?.login}
           participants={participants}
         />
       }
@@ -172,6 +175,7 @@ export default async function IssueDetailPage({
         emptyTitle: "Ghost",
         emptyDescription:
           "Ask questions, get help drafting responses, or create a PR to fix this issue",
+        repoFileSearch: repoData ? { owner, repo, ref: repoData.default_branch } : undefined,
       }}
     />
     </>

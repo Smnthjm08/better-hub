@@ -4,7 +4,57 @@ import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { DefaultChatTransport } from "ai";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { ArrowUp, Square, RotateCcw, Loader2, Check, FileEdit, FilePlus2, FileSearch, GitPullRequest, Search, Star, GitFork, Eye, EyeOff, CirclePlus, CircleX, List, GitMerge, User, UserPlus, UserMinus, Bell, BellOff, Code2, Navigation, ExternalLink, MessageSquare, Tag, GitBranch, Globe, Container, Terminal, FileUp, FileDown, GitCommitHorizontal, Power, Play } from "lucide-react";
+import { ArrowUp, Square, RotateCcw, Loader2, Check, FileEdit, FilePlus2, FileSearch, GitPullRequest, Search, Star, GitFork, Eye, EyeOff, CirclePlus, CircleX, List, GitMerge, User, UserPlus, UserMinus, Bell, BellOff, Code2, Navigation, ExternalLink, MessageSquare, Tag, GitBranch, Container, Terminal, FileUp, FileDown, GitCommitHorizontal, Power, Play, Ghost, Copy } from "lucide-react";
+
+function GithubIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className}><path fill="currentColor" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489c.5.092.682-.217.682-.482c0-.237-.008-.866-.013-1.7c-2.782.603-3.369-1.342-3.369-1.342c-.454-1.155-1.11-1.462-1.11-1.462c-.908-.62.069-.608.069-.608c1.003.07 1.531 1.03 1.531 1.03c.892 1.529 2.341 1.087 2.91.832c.092-.647.35-1.088.636-1.338c-2.22-.253-4.555-1.11-4.555-4.943c0-1.091.39-1.984 1.029-2.683c-.103-.253-.446-1.27.098-2.647c0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025c.546 1.377.203 2.394.1 2.647c.64.699 1.028 1.592 1.028 2.683c0 3.842-2.339 4.687-4.566 4.935c.359.309.678.919.678 1.852c0 1.336-.012 2.415-.012 2.743c0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10" /></svg>
+  );
+}
+const GHOST_THINKING_PHRASES = [
+  "Haunting the codebase",
+  "Summoning answers",
+  "Phasing through repos",
+  "Reading the spectral docs",
+  "Channeling commits",
+  "Whispering to the API",
+  "Drifting through issues",
+  "Manifesting a response",
+];
+
+function GhostThinkingIndicator({ status }: { status: string }) {
+  const [phraseIdx, setPhraseIdx] = useState(
+    () => Math.floor(Math.random() * GHOST_THINKING_PHRASES.length)
+  );
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPhraseIdx((i) => (i + 1) % GHOST_THINKING_PHRASES.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const phrase = status === "submitted"
+    ? GHOST_THINKING_PHRASES[phraseIdx]
+    : "Conjuring";
+
+  return (
+    <div className="flex items-center gap-2 py-2">
+      <div className="ghost-thinking-float">
+        <Ghost className="w-3.5 h-3.5 text-muted-foreground/50" />
+      </div>
+      <span className="text-[11px] font-mono text-muted-foreground/50 transition-all duration-300">
+        {phrase}
+      </span>
+      <span className="flex gap-[2px]">
+        <span className="ghost-dot-1 w-[3px] h-[3px] rounded-full bg-muted-foreground/40" />
+        <span className="ghost-dot-2 w-[3px] h-[3px] rounded-full bg-muted-foreground/40" />
+        <span className="ghost-dot-3 w-[3px] h-[3px] rounded-full bg-muted-foreground/40" />
+      </span>
+    </div>
+  );
+}
+
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -14,9 +64,79 @@ import { AgentIcon } from "@/components/ui/agent-icon";
 import { useSession } from "@/lib/auth-client";
 import { useGlobalChatOptional } from "@/components/shared/global-chat-provider";
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+      className={cn(
+        "absolute top-1.5 right-1.5 p-1 rounded-md transition-all duration-150 cursor-pointer",
+        "opacity-0 group-hover/code:opacity-100",
+        copied
+          ? "bg-emerald-500/10 text-emerald-500"
+          : "bg-zinc-200/60 dark:bg-zinc-700/60 text-muted-foreground/60 hover:text-foreground hover:bg-zinc-300/60 dark:hover:bg-zinc-600/60"
+      )}
+      title="Copy"
+    >
+      {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+    </button>
+  );
+}
+
 /** Custom markdown components for Ghost AI responses.
- *  Rewrites github.com links to internal app routes. */
+ *  Rewrites github.com links to internal app routes.
+ *  Adds copy button on code blocks and inline code. */
 const ghostMarkdownComponents = {
+  pre: ({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) => {
+    // Extract text content from the <code> child
+    let codeText = "";
+    const child = Array.isArray(children) ? children[0] : children;
+    if (child && typeof child === "object" && "props" in child) {
+      const codeChildren = child.props.children;
+      if (typeof codeChildren === "string") {
+        codeText = codeChildren;
+      } else if (Array.isArray(codeChildren)) {
+        codeText = codeChildren
+          .map((c: any) => (typeof c === "string" ? c : ""))
+          .join("");
+      }
+    }
+    return (
+      <div className="relative group/code">
+        <pre {...props}>{children}</pre>
+        {codeText && <CopyButton text={codeText} />}
+      </div>
+    );
+  },
+  code: ({ children, className, ...props }: React.HTMLAttributes<HTMLElement>) => {
+    // If it has a language className, it's inside a <pre> — don't add copy here
+    if (className) {
+      return <code className={className} {...props}>{children}</code>;
+    }
+    // Inline code — add copy on hover
+    const text = typeof children === "string" ? children : "";
+    return (
+      <span className="relative inline-flex group/code">
+        <code {...props}>{children}</code>
+        {text && (
+          <button
+            type="button"
+            onClick={() => navigator.clipboard.writeText(text)}
+            className="opacity-0 group-hover/code:opacity-100 ml-0.5 p-0.5 rounded text-muted-foreground/40 hover:text-foreground transition-all duration-150 cursor-pointer self-center"
+            title="Copy"
+          >
+            <Copy className="w-2.5 h-2.5" />
+          </button>
+        )}
+      </span>
+    );
+  },
   a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
     if (href && parseGitHubUrl(href)) {
       const internalPath = toInternalUrl(href);
@@ -67,6 +187,12 @@ interface AIChatProps {
   attachedContexts?: AttachedContext[];
   /** Called after a message is sent to clear attached contexts */
   onContextsConsumed?: () => void;
+  /** Search repo files for # mention (returns file paths) */
+  onSearchRepoFiles?: (query: string) => Promise<{ path: string }[]>;
+  /** Fetch full file content for # mention selection */
+  onFetchFileContent?: (path: string) => Promise<{ filename: string; content: string } | null>;
+  /** PR diff files shown in the "PR Files" section of # dropdown */
+  hashMentionPrFiles?: MentionableFile[];
 }
 
 export function AIChat({
@@ -85,6 +211,9 @@ export function AIChat({
   onAddFileContext,
   attachedContexts,
   onContextsConsumed,
+  onSearchRepoFiles,
+  onFetchFileContent,
+  hashMentionPrFiles,
 }: AIChatProps) {
   const { data: session } = useSession();
   const globalChat = useGlobalChatOptional();
@@ -115,24 +244,76 @@ export function AIChat({
 
   const showMentionDropdown = mentionQuery !== null && filteredMentionFiles.length > 0;
 
-  // Detect @ trigger in input
+  // # mention autocomplete state
+  const [hashQuery, setHashQuery] = useState<string | null>(null);
+  const [hashIndex, setHashIndex] = useState(0);
+  const [hashRepoResults, setHashRepoResults] = useState<{ path: string }[]>([]);
+  const [hashSearching, setHashSearching] = useState(false);
+  const hashContainerRef = useRef<HTMLDivElement>(null);
+  const hashDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Filtered PR files for # mention
+  const filteredHashPrFiles = useMemo(() => {
+    if (hashQuery === null || !hashMentionPrFiles?.length) return [];
+    const q = hashQuery.toLowerCase();
+    return hashMentionPrFiles.filter((f) =>
+      f.filename.toLowerCase().includes(q)
+    );
+  }, [hashQuery, hashMentionPrFiles]);
+
+  const hashTotalItems = filteredHashPrFiles.length + hashRepoResults.length;
+  const showHashDropdown = hashQuery !== null && (hashTotalItems > 0 || hashSearching);
+
+  // Detect @ and # triggers in input
   const handleInputChange = useCallback((value: string) => {
     setInput(value);
-    if (!mentionableFiles?.length) {
-      setMentionQuery(null);
-      return;
-    }
-    // Find the last @ that isn't preceded by a word character
+
     const cursorPos = inputRef.current?.selectionStart ?? value.length;
     const textBeforeCursor = value.slice(0, cursorPos);
-    const atMatch = textBeforeCursor.match(/(^|[^a-zA-Z0-9])@([^\s]*)$/);
+
+    // Check for @ trigger
+    const atMatch = mentionableFiles?.length
+      ? textBeforeCursor.match(/(^|[^a-zA-Z0-9])@([^\s]*)$/)
+      : null;
+
+    // Check for # trigger
+    const hashMatch = onSearchRepoFiles
+      ? textBeforeCursor.match(/(^|[^a-zA-Z0-9])#([^\s]*)$/)
+      : null;
+
+    // @ and # are mutually exclusive — @ takes priority
     if (atMatch) {
       setMentionQuery(atMatch[2]);
       setMentionIndex(0);
+      setHashQuery(null);
+    } else if (hashMatch) {
+      setMentionQuery(null);
+      const q = hashMatch[2];
+      setHashQuery(q);
+      setHashIndex(0);
+
+      // Debounce repo file search
+      if (hashDebounceRef.current) clearTimeout(hashDebounceRef.current);
+      if (onSearchRepoFiles && q.length > 0) {
+        setHashSearching(true);
+        hashDebounceRef.current = setTimeout(() => {
+          onSearchRepoFiles(q).then((results) => {
+            setHashRepoResults(results);
+            setHashSearching(false);
+          }).catch(() => {
+            setHashRepoResults([]);
+            setHashSearching(false);
+          });
+        }, 200);
+      } else {
+        setHashRepoResults([]);
+        setHashSearching(false);
+      }
     } else {
       setMentionQuery(null);
+      setHashQuery(null);
     }
-  }, [mentionableFiles]);
+  }, [mentionableFiles, onSearchRepoFiles]);
 
   const selectMentionFile = useCallback((file: MentionableFile) => {
     // Remove the @query from input
@@ -150,6 +331,34 @@ export function AIChat({
     inputRef.current?.focus();
   }, [input, onAddFileContext]);
 
+  // Select a file from # mention dropdown
+  const selectHashFile = useCallback(async (path: string, isPrFile: boolean) => {
+    // Remove the #query from input
+    const cursorPos = inputRef.current?.selectionStart ?? input.length;
+    const textBeforeCursor = input.slice(0, cursorPos);
+    const hashMatch = textBeforeCursor.match(/(^|[^a-zA-Z0-9])#([^\s]*)$/);
+    if (hashMatch && hashMatch.index !== undefined) {
+      const startIdx = hashMatch.index + hashMatch[1].length;
+      const newInput = input.slice(0, startIdx) + input.slice(cursorPos);
+      setInput(newInput);
+    }
+    setHashQuery(null);
+    setHashRepoResults([]);
+
+    if (isPrFile) {
+      // Find the PR file and add its patch as context
+      const prFile = hashMentionPrFiles?.find((f) => f.filename === path);
+      if (prFile) onAddFileContext?.(prFile);
+    } else if (onFetchFileContent) {
+      // Fetch full file content from repo
+      const result = await onFetchFileContent(path);
+      if (result) {
+        onAddFileContext?.({ filename: result.filename, patch: result.content });
+      }
+    }
+    inputRef.current?.focus();
+  }, [input, hashMentionPrFiles, onAddFileContext, onFetchFileContent]);
+
   // Close mention dropdown on click outside
   useEffect(() => {
     if (!showMentionDropdown) return;
@@ -162,27 +371,39 @@ export function AIChat({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showMentionDropdown]);
 
+  // Close # mention dropdown on click outside
+  useEffect(() => {
+    if (!showHashDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (hashContainerRef.current && !hashContainerRef.current.contains(e.target as Node)) {
+        setHashQuery(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showHashDropdown]);
+
   // Use a ref so the transport body function always returns the latest contextBody.
   // This avoids stale closure issues where the transport might send an outdated body
   // (e.g. missing inlineContexts that were just added).
   const contextBodyRef = useRef(contextBody);
   contextBodyRef.current = contextBody;
 
-  // Recreate transport when the API endpoint changes or when switching between
-  // major context modes (PR → general, etc.) to reset the useChat hook's state.
-  const bodyKey = useMemo(() => JSON.stringify(contextBody), [contextBody]);
-
+  // Only recreate transport when the API endpoint changes.
+  // The body function reads from contextBodyRef, so it always returns the latest
+  // value without needing to recreate the transport. Recreating mid-stream
+  // (e.g. when contexts are cleared after send, or pathname changes during
+  // navigation tool calls) would abort the in-flight request and leave status stuck.
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api: apiEndpoint,
         body: () => contextBodyRef.current,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [apiEndpoint, bodyKey]
+    [apiEndpoint]
   );
 
-  const { messages, sendMessage, setMessages, status, stop } = useChat({
+  const { messages, sendMessage, setMessages, status, stop, error, clearError, regenerate } = useChat({
     transport,
   });
 
@@ -297,7 +518,8 @@ export function AIChat({
   useEffect(() => {
     globalChat?.setIsWorking(isLoading);
     return () => globalChat?.setIsWorking(false);
-  }, [isLoading, globalChat]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
 
   // ─── Client-Side Action Executor ──────────────────────────────────
   const executedActionsRef = useRef<Set<string>>(new Set());
@@ -457,6 +679,34 @@ export function AIChat({
   }, [input, inputMinHeight]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle # mention keyboard navigation
+    if (showHashDropdown && hashTotalItems > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHashIndex((i) => Math.min(i + 1, hashTotalItems - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHashIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const prLen = filteredHashPrFiles.length;
+        if (hashIndex < prLen) {
+          selectHashFile(filteredHashPrFiles[hashIndex].filename, true);
+        } else {
+          selectHashFile(hashRepoResults[hashIndex - prLen].path, false);
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setHashQuery(null);
+        return;
+      }
+    }
     // Handle @ mention keyboard navigation
     if (showMentionDropdown) {
       if (e.key === "ArrowDown") {
@@ -532,7 +782,8 @@ export function AIChat({
       el.removeEventListener("scroll", updateScrollState);
       ro.disconnect();
     };
-  }, [messages]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length]);
 
   return (
     <div className="flex flex-col h-full">
@@ -562,10 +813,10 @@ export function AIChat({
           <div className="flex flex-col items-center justify-center h-full text-center gap-3">
             <AgentIcon className="size-6 text-muted-foreground/40" />
             <div>
-              <p className="text-xs font-medium text-foreground/70 mb-0.5">
+              <p className="text-xs font-medium text-foreground/70 mb-0.5" suppressHydrationWarning>
                 {emptyTitle}
               </p>
-              <p className="text-[11px] text-muted-foreground/50 max-w-[220px]">
+              <p className="text-[11px] text-muted-foreground/50 max-w-[220px]" suppressHydrationWarning>
                 {emptyDescription}
               </p>
             </div>
@@ -605,22 +856,31 @@ export function AIChat({
                       </span>
                       {/* Context chips — right side of name row */}
                       {messageContexts[message.id] && messageContexts[message.id].length > 0 && (
-                        <div className="flex flex-wrap gap-1 ml-auto">
-                          {messageContexts[message.id].map((ctx, ci) => (
+                        <div className="flex items-center gap-1 ml-auto">
+                          {messageContexts[message.id].length === 1 ? (
                             <span
-                              key={`${ctx.filename}-${ci}`}
                               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800/60 text-[10px] font-mono text-muted-foreground/60"
                             >
                               <Code2 className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" />
                               <span className="truncate max-w-[140px]">
-                                {ctx.filename.split("/").pop()}
+                                {messageContexts[message.id][0].filename.split("/").pop()}
                                 <span className="text-muted-foreground/50">
-                                  :{ctx.startLine}
-                                  {ctx.endLine !== ctx.startLine && `\u2013${ctx.endLine}`}
+                                  :{messageContexts[message.id][0].startLine}
+                                  {messageContexts[message.id][0].endLine !== messageContexts[message.id][0].startLine && `\u2013${messageContexts[message.id][0].endLine}`}
                                 </span>
                               </span>
                             </span>
-                          ))}
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800/60 text-[10px] font-mono text-muted-foreground/60">
+                              <Code2 className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" />
+                              <span className="size-4 rounded-full bg-foreground/10 flex items-center justify-center text-[9px] font-semibold text-muted-foreground/80 tabular-nums">
+                                {messageContexts[message.id].length}
+                              </span>
+                              <span className="text-muted-foreground/50">
+                                files
+                              </span>
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -648,6 +908,7 @@ export function AIChat({
                             state={p.state}
                             args={p.input}
                             result={p.output}
+                            onStop={stop}
                           />
                         );
                       }
@@ -658,13 +919,28 @@ export function AIChat({
               </div>
             ))}
 
-            {/* Processing indicator — visible during submitted + early streaming */}
-            {isLoading && (
+            {/* Ghost thinking indicator */}
+            {isLoading && !error && (
+              <GhostThinkingIndicator status={status} />
+            )}
+
+            {/* Error state — stream died, timed out, etc. */}
+            {error && (
               <div className="flex items-center gap-2 py-1.5">
-                <Loader2 className="w-3 h-3 animate-spin text-muted-foreground/50" />
-                <span className="text-[11px] font-mono text-muted-foreground/50">
-                  {status === "submitted" ? "Thinking..." : "Processing..."}
+                <span className="text-[11px] text-red-500/70">
+                  Something went wrong.
                 </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearError();
+                    regenerate();
+                  }}
+                  className="text-[11px] text-muted-foreground/50 hover:text-foreground transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  <RotateCcw className="w-2.5 h-2.5" />
+                  Retry
+                </button>
               </div>
             )}
           </div>
@@ -754,6 +1030,95 @@ export function AIChat({
               })}
             </div>
           )}
+          {/* # file mention dropdown */}
+          {showHashDropdown && (
+            <div
+              ref={hashContainerRef}
+              className="border-b border-border/40 max-h-[200px] overflow-y-auto"
+            >
+              {filteredHashPrFiles.length > 0 && (
+                <>
+                  <div className="px-3 py-1 text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wider">
+                    PR Files
+                  </div>
+                  {filteredHashPrFiles.map((file, i) => {
+                    const basename = file.filename.split("/").pop() || file.filename;
+                    const dir = file.filename.includes("/")
+                      ? file.filename.slice(0, file.filename.lastIndexOf("/"))
+                      : "";
+                    return (
+                      <button
+                        key={`pr-${file.filename}`}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          selectHashFile(file.filename, true);
+                        }}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors cursor-pointer",
+                          i === hashIndex
+                            ? "bg-zinc-100 dark:bg-zinc-800/60"
+                            : "hover:bg-zinc-50 dark:hover:bg-zinc-800/30"
+                        )}
+                      >
+                        <Code2 className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                        <span className="text-[12px] font-mono truncate">
+                          <span className="text-foreground/80">{basename}</span>
+                          {dir && (
+                            <span className="text-muted-foreground/40 ml-1">{dir}</span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+              {(hashRepoResults.length > 0 || hashSearching) && (
+                <>
+                  <div className="px-3 py-1 text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wider">
+                    Repository
+                  </div>
+                  {hashRepoResults.map((file, i) => {
+                    const globalIdx = filteredHashPrFiles.length + i;
+                    const basename = file.path.split("/").pop() || file.path;
+                    const dir = file.path.includes("/")
+                      ? file.path.slice(0, file.path.lastIndexOf("/"))
+                      : "";
+                    return (
+                      <button
+                        key={`repo-${file.path}`}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          selectHashFile(file.path, false);
+                        }}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors cursor-pointer",
+                          globalIdx === hashIndex
+                            ? "bg-zinc-100 dark:bg-zinc-800/60"
+                            : "hover:bg-zinc-50 dark:hover:bg-zinc-800/30"
+                        )}
+                      >
+                        <Code2 className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                        <span className="text-[12px] font-mono truncate">
+                          <span className="text-foreground/80">{basename}</span>
+                          {dir && (
+                            <span className="text-muted-foreground/40 ml-1">{dir}</span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {hashSearching && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-muted-foreground/40">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Searching...
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           {inputPrefix}
           <div className="flex items-end">
             <textarea
@@ -763,6 +1128,7 @@ export function AIChat({
               onChange={(e) => handleInputChange(e.target.value)}
               onKeyDown={onKeyDown}
               placeholder={placeholder}
+              suppressHydrationWarning
               rows={1}
               className={cn(
                 "flex-1 resize-none text-[13px] bg-transparent pl-3.5 pr-1.5 py-2.5",
@@ -814,18 +1180,20 @@ export function ToolInvocationDisplay({
   state,
   args,
   result,
+  onStop,
 }: {
   toolName: string;
   state: string;
   args: any;
   result?: any;
+  onStop?: () => void;
 }) {
   const isLoading = state === "input-streaming" || state === "input-available";
   const isDone = state === "output-available";
   const hasError = isDone && result?.error;
   const hasSuccess = isDone && result?.success;
 
-  const config: Record<string, { icon: typeof FileEdit; loadingText: string; doneText: string }> = {
+  const config: Record<string, { icon: React.ComponentType<{ className?: string }>; loadingText: string; doneText: string }> = {
     // PR/Issue tools
     getFileContent: {
       icon: FileSearch,
@@ -1008,7 +1376,7 @@ export function ToolInvocationDisplay({
     },
     // Flexible API
     queryGitHub: {
-      icon: Globe,
+      icon: GithubIcon,
       loadingText: `Querying GitHub API...`,
       doneText: hasError ? "API query failed" : "Queried GitHub API",
     },
@@ -1069,8 +1437,8 @@ export function ToolInvocationDisplay({
       icon: Terminal,
       loadingText: `Running: ${(args?.command || "").slice(0, 60)}${(args?.command || "").length > 60 ? "..." : ""}`,
       doneText: hasError
-        ? `Command failed: ${result?.error || ""}`
-        : `Ran command (exit ${result?.exitCode ?? "?"})`,
+        ? `Failed (exit ${result?.exitCode ?? "?"}): ${(result?.error || "").slice(0, 80)}`
+        : `Ran command (exit 0)`,
     },
     sandboxReadFile: {
       icon: FileDown,
@@ -1134,6 +1502,15 @@ export function ToolInvocationDisplay({
       <span className="truncate">
         {isLoading ? c.loadingText : hasError ? result.error : c.doneText}
       </span>
+      {isLoading && onStop && (
+        <button
+          onClick={onStop}
+          className="ml-auto shrink-0 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
+          title="Cancel"
+        >
+          <Square className="w-2.5 h-2.5 fill-current" />
+        </button>
+      )}
     </div>
   );
 }
