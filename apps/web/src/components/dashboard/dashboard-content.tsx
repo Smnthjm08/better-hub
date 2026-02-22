@@ -171,9 +171,7 @@ function ExtensionBanner() {
 			<p className="flex-1 text-[11px] text-muted-foreground leading-relaxed">
 				Install our{" "}
 				<a
-					href="https://better-hub.com/extension"
-					target="_blank"
-					rel="noopener noreferrer"
+					href="/extension"
 					className="text-foreground underline underline-offset-2 decoration-foreground/20 hover:decoration-foreground/40 transition-colors"
 				>
 					browser extension

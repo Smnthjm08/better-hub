@@ -1,6 +1,6 @@
-const DEFAULT_HOST = "http://localhost:3000";
+const DEFAULT_HOST = "https://beta.better-hub.com";
 
-// On install: just set defaults. Static rules handle localhost:3000 out of the box.
+// On install: just set defaults. Static rules handle the default host out of the box.
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.get(["enabled", "host"], (data) => {
     const enabled = data.enabled !== false;

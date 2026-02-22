@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { pinItem, unpinItem, getPinnedItemUrls } from "@/lib/pinned-items-store";
+import { pinItem, unpinItem, getPinnedItemUrls, getPinnedItems, type PinnedItem } from "@/lib/pinned-items-store";
 import { revalidatePath } from "next/cache";
 
 export async function pinToOverview(
@@ -31,6 +31,15 @@ export async function unpinFromOverview(
 	await unpinItem(session.user.id, owner, repo, url);
 	revalidatePath(`/repos/${owner}/${repo}`);
 	return { success: true };
+}
+
+export async function fetchPinnedItemsForRepo(
+	owner: string,
+	repo: string,
+): Promise<PinnedItem[]> {
+	const session = await auth.api.getSession({ headers: await headers() });
+	if (!session?.user?.id) return [];
+	return getPinnedItems(session.user.id, owner, repo);
 }
 
 export async function getPinnedUrlsForRepo(

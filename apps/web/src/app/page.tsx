@@ -12,7 +12,20 @@ export default async function HomePage() {
 	}
 
 	return (
-		<div className="min-h-screen bg-background flex">
+		<div
+			className="min-h-screen bg-background flex"
+			style={
+				{
+					"--background": "#030304",
+					"--foreground": "#fafafa",
+					"--shader-bg": "#09090b",
+					"--shader-filter": "none",
+					"--hero-border": "#27272a",
+					"--border": "#27272a",
+					colorScheme: "dark",
+				} as React.CSSProperties
+			}
+		>
 			<div
 				className="hidden lg:flex flex-1 relative overflow-hidden"
 				style={{ background: "var(--shader-bg)" }}
@@ -87,7 +100,7 @@ export default async function HomePage() {
 							alt="Better Hub"
 							width={28}
 							height={28}
-							className="rounded-md dark:invert"
+							className="rounded-md invert"
 						/>
 					</div>
 

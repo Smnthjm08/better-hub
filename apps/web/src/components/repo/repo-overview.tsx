@@ -9,7 +9,7 @@ import { cn, formatNumber } from "@/lib/utils";
 import type { CommitActivityWeek, CheckStatus } from "@/lib/github";
 import { GitPullRequest, CircleDot, MessageSquare, XCircle, Pin, GitCommit, Link2, X } from "lucide-react";
 import { CheckStatusBadge } from "@/components/pr/check-status-badge";
-import { unpinFromOverview } from "@/app/(app)/repos/[owner]/[repo]/pin-actions";
+import { unpinFromOverview, fetchPinnedItemsForRepo } from "@/app/(app)/repos/[owner]/[repo]/pin-actions";
 import type { PinnedItem } from "@/lib/pinned-items-store";
 import { useMutationSubscription } from "@/hooks/use-mutation-subscription";
 import { useMutationEvents } from "@/components/shared/mutation-event-provider";
@@ -41,7 +41,7 @@ function Section({
 	className?: string;
 }) {
 	return (
-		<div className={cn("p-4 flex flex-col lg:min-h-0", className)}>
+		<div className={cn("p-4 flex flex-col lg:min-h-0 rounded-lg border border-border/40 bg-card", className)}>
 			<div className="flex items-baseline gap-2 mb-4 shrink-0">
 				<h3 className="text-sm font-medium text-foreground">{title}</h3>
 				{subtitle && (
@@ -85,7 +85,7 @@ function ListItem({
 	return (
 		<Link
 			href={href}
-			className="flex items-start gap-2.5 py-2 group hover:bg-muted/40 -mx-2 px-2 rounded-md transition-colors"
+			className="flex items-start gap-2.5 py-2 group hover:bg-muted -mx-2 px-2 rounded-md transition-colors"
 		>
 			<Icon className="w-3.5 h-3.5 mt-0.5 shrink-0 text-success" />
 			<div className="min-w-0 flex-1">
@@ -347,7 +347,7 @@ function ActivityItem({ event }: { event: RepoEvent }) {
 	const content = (
 		<div
 			className={cn(
-				"flex items-start gap-2 py-1.5 -mx-2 px-2 rounded-md transition-colors hover:bg-muted/40 group",
+				"flex items-start gap-2 py-1.5 -mx-2 px-2 rounded-md transition-colors hover:bg-muted group",
 				href && "cursor-pointer",
 			)}
 			onClick={href ? () => router.push(href) : undefined}
@@ -445,7 +445,7 @@ function CommitActivityGraph({ data }: { data: CommitActivityWeek[] }) {
 								className={cn(
 									"w-full rounded-t-[2px] rounded-b-[1px] transition-colors",
 									week.total === 0
-										? "bg-muted/40"
+										? "bg-border"
 										: hovered === i
 											? "bg-success/90"
 											: isLatest
@@ -630,7 +630,7 @@ function TickerCard({ item }: { item: HotItem }) {
 	return (
 		<Link
 			href={item.href}
-			className="w-full shrink-0 flex items-start gap-3 px-4 py-3 group hover:bg-muted/30 transition-colors"
+			className="w-full shrink-0 flex items-start gap-3 px-4 py-3 group hover:bg-muted transition-colors"
 		>
 			<Icon className="w-3.5 h-3.5 mt-0.5 shrink-0 text-success" />
 			<div className="min-w-0 flex-1">
@@ -721,7 +721,7 @@ function PinnedItemsSection({
 	if (localItems.length === 0) return null;
 
 	return (
-		<div className="border border-dashed border-border/60 rounded-lg overflow-hidden">
+		<div className="border border-border/40 bg-card rounded-lg overflow-hidden">
 			<div className="flex items-center gap-2 px-4 pt-3 pb-1">
 				<Pin className="w-3 h-3 text-muted-foreground/60" />
 				<h3 className="text-sm font-medium text-foreground">Pinned</h3>
@@ -735,7 +735,7 @@ function PinnedItemsSection({
 					return (
 						<div
 							key={item.id}
-							className="flex items-center gap-2.5 px-2 py-1.5 group hover:bg-muted/40 rounded-md transition-colors"
+							className="flex items-center gap-2.5 px-2 py-1.5 group hover:bg-muted rounded-md transition-colors"
 						>
 							<Icon className="w-3.5 h-3.5 shrink-0 text-muted-foreground/60" />
 							<Link
@@ -781,7 +781,7 @@ function CIStatusCard({
 	return (
 		<div
 			className={cn(
-				"rounded-lg p-4 bg-muted/40",
+				"rounded-lg p-4 bg-card border border-border/40",
 				hasFails && "border-l-2 border-l-destructive/50",
 			)}
 		>
@@ -846,7 +846,7 @@ function HighlightedActivityTicker({ items }: { items: HotItem[] }) {
 	const [activeIndex, setActiveIndex] = useState(0);
 	return (
 		<div
-			className="border border-dashed border-border/60 rounded-lg overflow-hidden"
+			className="border border-border/40 bg-card rounded-lg overflow-hidden"
 		>
 			<div className="flex items-center justify-between px-4 pt-3 pb-1">
 				<h3 className="text-sm font-medium text-foreground">
@@ -888,23 +888,23 @@ function HighlightedActivityTicker({ items }: { items: HotItem[] }) {
 
 function ReadmeSkeleton() {
 	return (
-		<div className="rounded-lg bg-muted/20 overflow-hidden">
+		<div className="rounded-lg bg-card border border-border/40 overflow-hidden">
 			<div className="px-6 py-5 space-y-4 animate-pulse">
-				<div className="h-7 w-2/5 bg-muted/40 rounded" />
+				<div className="h-7 w-2/5 bg-muted rounded" />
 				<div className="space-y-2.5">
-					<div className="h-4 w-full bg-muted/30 rounded" />
-					<div className="h-4 w-11/12 bg-muted/30 rounded" />
-					<div className="h-4 w-4/5 bg-muted/30 rounded" />
+					<div className="h-4 w-full bg-muted rounded" />
+					<div className="h-4 w-11/12 bg-muted rounded" />
+					<div className="h-4 w-4/5 bg-muted rounded" />
 				</div>
 				<div className="space-y-2.5 pt-2">
-					<div className="h-4 w-full bg-muted/30 rounded" />
-					<div className="h-4 w-3/4 bg-muted/30 rounded" />
+					<div className="h-4 w-full bg-muted rounded" />
+					<div className="h-4 w-3/4 bg-muted rounded" />
 				</div>
-				<div className="h-24 w-full bg-muted/20 rounded-md" />
+				<div className="h-24 w-full bg-muted/60 rounded-md" />
 				<div className="space-y-2.5">
-					<div className="h-4 w-full bg-muted/30 rounded" />
-					<div className="h-4 w-5/6 bg-muted/30 rounded" />
-					<div className="h-4 w-2/3 bg-muted/30 rounded" />
+					<div className="h-4 w-full bg-muted rounded" />
+					<div className="h-4 w-5/6 bg-muted rounded" />
+					<div className="h-4 w-2/3 bg-muted rounded" />
 				</div>
 			</div>
 		</div>
@@ -915,18 +915,18 @@ function MaintainerSkeleton() {
 	return (
 		<div className="grid grid-cols-1 gap-4 lg:flex-1 lg:min-h-0 lg:grid-rows-1 lg:grid-cols-3">
 			{[0, 1, 2].map((i) => (
-				<div key={i} className="p-4 animate-pulse">
+				<div key={i} className="p-4 animate-pulse rounded-lg border border-border/40 bg-card">
 					<div className="flex items-baseline gap-2 mb-4">
-						<div className="h-4 w-24 bg-muted/40 rounded" />
-						<div className="h-3 w-8 bg-muted/30 rounded ml-auto" />
+						<div className="h-4 w-24 bg-muted rounded" />
+						<div className="h-3 w-8 bg-muted rounded ml-auto" />
 					</div>
 					<div className="space-y-3">
 						{[0, 1, 2, 3, 4].map((j) => (
 							<div key={j} className="flex items-start gap-2.5 py-2">
-								<div className="w-4 h-4 rounded bg-muted/30 shrink-0 mt-0.5" />
+								<div className="w-4 h-4 rounded bg-muted shrink-0 mt-0.5" />
 								<div className="flex-1 space-y-1.5">
-									<div className="h-3.5 bg-muted/30 rounded" style={{ width: `${70 - j * 8}%` }} />
-									<div className="h-2.5 w-20 bg-muted/20 rounded" />
+									<div className="h-3.5 bg-muted rounded" style={{ width: `${70 - j * 8}%` }} />
+									<div className="h-2.5 w-20 bg-muted/60 rounded" />
 								</div>
 							</div>
 						))}
@@ -944,7 +944,6 @@ export interface RepoOverviewProps {
 	isMaintainer: boolean;
 	openPRCount?: number;
 	openIssueCount?: number;
-	pinnedItems?: PinnedItem[];
 	defaultBranch?: string;
 	initialReadmeHtml?: string | null;
 	initialPRs?: PRItem[] | null;
@@ -962,7 +961,6 @@ export function RepoOverview({
 	openPRCount,
 	openIssueCount,
 	defaultBranch,
-	pinnedItems,
 	initialReadmeHtml,
 	initialPRs,
 	initialIssues,
@@ -1017,6 +1015,15 @@ export function RepoOverview({
 		queryKey: ["overview-ci", owner, repo, branch],
 		queryFn: () => fetchOverviewCIStatus(owner, repo, branch),
 		initialData: initialCIStatus ?? undefined,
+		enabled: isMaintainer,
+		staleTime: Infinity,
+		gcTime: Infinity,
+		refetchOnMount: "always",
+	});
+
+	const { data: pinnedItems } = useQuery({
+		queryKey: ["pinned-items", owner, repo],
+		queryFn: () => fetchPinnedItemsForRepo(owner, repo),
 		enabled: isMaintainer,
 		staleTime: Infinity,
 		gcTime: Infinity,
@@ -1108,7 +1115,7 @@ export function RepoOverview({
 			{readmeLoading ? (
 				<ReadmeSkeleton />
 			) : readmeHtml ? (
-				<div className="rounded-lg bg-muted/20 overflow-hidden">
+				<div className="rounded-lg bg-card border border-border/40 overflow-hidden">
 					<div className="px-6 py-5">
 						<MarkdownCopyHandler>
 							<div

@@ -1,8 +1,7 @@
 "use client";
 
 import { signIn } from "@/lib/auth-client";
-import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 function GithubIcon({ className }: { className?: string }) {
 	return (
@@ -72,12 +71,7 @@ function LoadingSpinner({ className }: { className?: string }) {
 }
 
 export function LoginButton() {
-	const { setTheme } = useTheme();
 	const [loading, setLoading] = useState(false);
-
-	useEffect(() => {
-		setTheme("light");
-	}, [setTheme]);
 
 	return (
 		<button
