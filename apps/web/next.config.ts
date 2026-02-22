@@ -3,7 +3,6 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
 	devIndicators: false,
 	serverExternalPackages: ["@prisma/client"],
-	cacheComponents: true,
 	experimental: {
 		staleTimes: {
 			dynamic: 300,
