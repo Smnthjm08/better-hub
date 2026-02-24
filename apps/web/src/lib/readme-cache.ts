@@ -13,5 +13,5 @@ export async function setCachedReadmeHtml(
 	repo: string,
 	html: string,
 ): Promise<void> {
-	await redis.set(readmeKey(owner, repo), html);
+	await redis.set(readmeKey(owner, repo), html, { ex: 60 * 60 });
 }

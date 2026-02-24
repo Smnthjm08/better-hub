@@ -39,9 +39,8 @@ export function SidebarLanguages({
 		queryKey: ["repo-languages", owner, repo],
 		queryFn: () => revalidateLanguages(owner, repo),
 		initialData: initialLanguages ?? undefined,
-		staleTime: Infinity,
-		gcTime: Infinity,
-		refetchOnMount: "always",
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
 	});
 
 	if (isLoading) {

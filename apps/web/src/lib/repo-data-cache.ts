@@ -1,5 +1,15 @@
 import { redis } from "./redis";
 
+/** TTLs in seconds */
+const TTL = {
+	/** Rarely changes: languages, contributors */
+	slow: 60 * 60 * 24, // 24 hours
+	/** Changes occasionally: branches, tags, page data, file tree */
+	medium: 60 * 60, // 1 hour
+	/** Changes frequently: PRs, issues, events, CI */
+	fast: 5 * 60, // 5 minutes
+} as const;
+
 function repoKey(owner: string, repo: string, suffix: string): string {
 	return `${suffix}:${owner.toLowerCase()}/${repo.toLowerCase()}`;
 }
@@ -32,7 +42,7 @@ export async function setCachedRepoLanguages(
 	repo: string,
 	languages: Record<string, number>,
 ): Promise<void> {
-	await redis.set(languagesKey(owner, repo), languages);
+	await redis.set(languagesKey(owner, repo), languages, { ex: TTL.slow });
 }
 
 export interface ContributorAvatar {
@@ -62,7 +72,7 @@ export async function setCachedContributorAvatars(
 	repo: string,
 	data: ContributorAvatarsData,
 ): Promise<void> {
-	await redis.set(contributorAvatarsKey(owner, repo), data);
+	await redis.set(contributorAvatarsKey(owner, repo), data, { ex: TTL.slow });
 }
 
 export interface BranchRef {
@@ -78,7 +88,7 @@ export async function setCachedBranches(
 	repo: string,
 	branches: BranchRef[],
 ): Promise<void> {
-	await redis.set(branchesKey(owner, repo), branches);
+	await redis.set(branchesKey(owner, repo), branches, { ex: TTL.medium });
 }
 
 export async function getCachedTags(owner: string, repo: string): Promise<BranchRef[] | null> {
@@ -86,7 +96,7 @@ export async function getCachedTags(owner: string, repo: string): Promise<Branch
 }
 
 export async function setCachedTags(owner: string, repo: string, tags: BranchRef[]): Promise<void> {
-	await redis.set(tagsKey(owner, repo), tags);
+	await redis.set(tagsKey(owner, repo), tags, { ex: TTL.medium });
 }
 
 // --- Core page data + file tree (shared across all viewers) ---
@@ -100,7 +110,7 @@ export async function setCachedRepoPageData<T>(
 	repo: string,
 	data: T,
 ): Promise<void> {
-	await redis.set(repoKey(owner, repo, "repo_page_data"), data);
+	await redis.set(repoKey(owner, repo, "repo_page_data"), data, { ex: TTL.medium });
 }
 
 export async function getCachedRepoTree<T>(owner: string, repo: string): Promise<T | null> {
@@ -108,7 +118,7 @@ export async function getCachedRepoTree<T>(owner: string, repo: string): Promise
 }
 
 export async function setCachedRepoTree<T>(owner: string, repo: string, tree: T): Promise<void> {
-	await redis.set(repoKey(owner, repo, "repo_file_tree"), tree);
+	await redis.set(repoKey(owner, repo, "repo_file_tree"), tree, { ex: TTL.medium });
 }
 
 // --- Overview caches (shared across all viewers) ---
@@ -122,7 +132,7 @@ export async function setCachedOverviewPRs<T>(
 	repo: string,
 	data: T[],
 ): Promise<void> {
-	await redis.set(repoKey(owner, repo, "overview_prs"), data);
+	await redis.set(repoKey(owner, repo, "overview_prs"), data, { ex: TTL.fast });
 }
 
 export async function getCachedOverviewIssues<T>(owner: string, repo: string): Promise<T[] | null> {
@@ -134,7 +144,7 @@ export async function setCachedOverviewIssues<T>(
 	repo: string,
 	data: T[],
 ): Promise<void> {
-	await redis.set(repoKey(owner, repo, "overview_issues"), data);
+	await redis.set(repoKey(owner, repo, "overview_issues"), data, { ex: TTL.fast });
 }
 
 export async function getCachedOverviewEvents<T>(owner: string, repo: string): Promise<T[] | null> {
@@ -146,7 +156,7 @@ export async function setCachedOverviewEvents<T>(
 	repo: string,
 	data: T[],
 ): Promise<void> {
-	await redis.set(repoKey(owner, repo, "overview_events"), data);
+	await redis.set(repoKey(owner, repo, "overview_events"), data, { ex: TTL.fast });
 }
 
 export async function getCachedOverviewCommitActivity<T>(
@@ -161,7 +171,7 @@ export async function setCachedOverviewCommitActivity<T>(
 	repo: string,
 	data: T[],
 ): Promise<void> {
-	await redis.set(repoKey(owner, repo, "overview_commit_activity"), data);
+	await redis.set(repoKey(owner, repo, "overview_commit_activity"), data, { ex: TTL.fast });
 }
 
 export async function getCachedOverviewCI<T>(owner: string, repo: string): Promise<T | null> {
@@ -169,7 +179,7 @@ export async function getCachedOverviewCI<T>(owner: string, repo: string): Promi
 }
 
 export async function setCachedOverviewCI<T>(owner: string, repo: string, data: T): Promise<void> {
-	await redis.set(repoKey(owner, repo, "overview_ci"), data);
+	await redis.set(repoKey(owner, repo, "overview_ci"), data, { ex: TTL.fast });
 }
 
 // --- Author dossier cache (per author per repo) ---
@@ -192,5 +202,5 @@ export async function setCachedAuthorDossier<T>(
 	login: string,
 	data: T,
 ): Promise<void> {
-	await redis.set(authorDossierKey(owner, repo, login), data);
+	await redis.set(authorDossierKey(owner, repo, login), data, { ex: TTL.medium });
 }

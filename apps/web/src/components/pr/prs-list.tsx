@@ -30,7 +30,7 @@ import {
 import { LabelBadge } from "@/components/shared/label-badge";
 import { useMutationSubscription } from "@/hooks/use-mutation-subscription";
 import { isRepoEvent, type MutationEvent } from "@/lib/mutation-events";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerInitialData } from "@/hooks/use-server-initial-data";
 
 interface PRUser {
@@ -61,9 +61,6 @@ interface PR {
 	checkStatus?: CheckStatus;
 }
 
-const checkStatusCache = new Map<string, { data: Record<number, CheckStatus>; ts: number }>();
-const CHECK_STATUS_TTL = 5 * 60 * 1000;
-
 function useBatchCheckStatuses(
 	owner: string,
 	repo: string,
@@ -74,38 +71,15 @@ function useBatchCheckStatuses(
 		prNumbers: number[],
 	) => Promise<Record<number, CheckStatus>>,
 ) {
-	const cacheKey = `${owner}/${repo}`;
-	const cached = checkStatusCache.get(cacheKey);
-	const hasFreshCache = cached && Date.now() - cached.ts < CHECK_STATUS_TTL;
+	const prNumbers = useMemo(() => openPRs.map((pr) => pr.number), [openPRs]);
 
-	const [statusMap, setStatusMap] = useState<Record<number, CheckStatus>>(
-		hasFreshCache ? cached.data : {},
-	);
-	const [loaded, setLoaded] = useState(!!hasFreshCache);
-	const fetchedRef = useRef(false);
-
-	useEffect(() => {
-		if (fetchedRef.current || !onFetchAllCheckStatuses || openPRs.length === 0) return;
-
-		const existing = checkStatusCache.get(cacheKey);
-		if (existing && Date.now() - existing.ts < CHECK_STATUS_TTL) {
-			setStatusMap(existing.data);
-			setLoaded(true);
-			fetchedRef.current = true;
-			return;
-		}
-
-		fetchedRef.current = true;
-		const prNumbers = openPRs.map((pr) => pr.number);
-		onFetchAllCheckStatuses(owner, repo, prNumbers).then(
-			(result) => {
-				checkStatusCache.set(cacheKey, { data: result, ts: Date.now() });
-				setStatusMap(result);
-				setLoaded(true);
-			},
-			() => setLoaded(true),
-		);
-	}, [owner, repo, cacheKey, openPRs, onFetchAllCheckStatuses]);
+	const { data: statusMap = {}, isFetched: loaded } = useQuery({
+		queryKey: ["pr-check-statuses", owner, repo, prNumbers],
+		queryFn: () => onFetchAllCheckStatuses!(owner, repo, prNumbers),
+		enabled: !!onFetchAllCheckStatuses && openPRs.length > 0,
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
+	});
 
 	return { statusMap, loaded };
 }

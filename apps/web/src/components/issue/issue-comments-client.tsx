@@ -47,9 +47,8 @@ export function IssueCommentsClient({
 		queryFn: () =>
 			fetchIssueComments(owner, repo, issueNumber) as Promise<IssueComment[]>,
 		initialData: initialComments,
-		staleTime: Infinity,
-		gcTime: Infinity,
-		refetchOnMount: "always",
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
 	});
 
 	const entries: IssueTimelineEntry[] = toEntries(comments);

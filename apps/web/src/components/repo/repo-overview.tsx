@@ -53,7 +53,7 @@ function Section({
 	className?: string;
 }) {
 	return (
-		<div className={cn("p-4 flex flex-col lg:min-h-0", className)}>
+		<div className={cn("p-4 flex flex-col lg:min-h-0 border border-border/40 rounded-md", className)}>
 			<div className="flex items-baseline gap-2 mb-4 shrink-0">
 				<h3 className="text-sm font-medium text-foreground">{title}</h3>
 				{subtitle && (
@@ -947,9 +947,8 @@ export function RepoOverview({
 		queryFn: () => fetchOverviewPRs(owner, repo),
 		initialData: initialPRs ?? undefined,
 		enabled: isMaintainer,
-		staleTime: Infinity,
-		gcTime: Infinity,
-		refetchOnMount: "always",
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
 	});
 
 	const { data: openIssues = [] } = useQuery({
@@ -957,9 +956,8 @@ export function RepoOverview({
 		queryFn: () => fetchOverviewIssues(owner, repo),
 		initialData: initialIssues ?? undefined,
 		enabled: isMaintainer,
-		staleTime: Infinity,
-		gcTime: Infinity,
-		refetchOnMount: "always",
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
 	});
 
 	const { data: commitActivity } = useQuery({
@@ -967,9 +965,8 @@ export function RepoOverview({
 		queryFn: () => fetchOverviewCommitActivity(owner, repo),
 		initialData: initialCommitActivity ?? undefined,
 		enabled: isMaintainer,
-		staleTime: Infinity,
-		gcTime: Infinity,
-		refetchOnMount: "always",
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
 	});
 
 	const { data: repoEvents } = useQuery({
@@ -977,9 +974,8 @@ export function RepoOverview({
 		queryFn: () => fetchOverviewEvents(owner, repo),
 		initialData: initialEvents ?? undefined,
 		enabled: isMaintainer,
-		staleTime: Infinity,
-		gcTime: Infinity,
-		refetchOnMount: "always",
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
 	});
 
 	const { data: ciStatus } = useQuery({
@@ -987,9 +983,8 @@ export function RepoOverview({
 		queryFn: () => fetchOverviewCIStatus(owner, repo, branch),
 		initialData: initialCIStatus ?? undefined,
 		enabled: isMaintainer,
-		staleTime: Infinity,
-		gcTime: Infinity,
-		refetchOnMount: "always",
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
 	});
 
 	const { data: pinnedItems } = useQuery({
@@ -997,9 +992,8 @@ export function RepoOverview({
 		queryFn: () => fetchPinnedItemsForRepo(owner, repo),
 		initialData: initialPinnedItems ?? undefined,
 		enabled: isMaintainer,
-		staleTime: Infinity,
-		gcTime: Infinity,
-		refetchOnMount: "always",
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
 	});
 
 	const hotItems = isMaintainer ? computeHotItems(openPRs, openIssues, base) : [];

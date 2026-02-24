@@ -49,9 +49,8 @@ export function CodeContentWrapper({
 		queryKey: ["repo-branches", owner, repo],
 		queryFn: async () => (await revalidateBranches(owner, repo)) ?? [],
 		initialData: initialBranches ?? undefined,
-		staleTime: Infinity,
-		gcTime: Infinity,
-		refetchOnMount: "always",
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
 		enabled: isCodeRoute,
 	});
 
@@ -59,9 +58,8 @@ export function CodeContentWrapper({
 		queryKey: ["repo-tags", owner, repo],
 		queryFn: async () => (await revalidateTags(owner, repo)) ?? [],
 		initialData: initialTags ?? undefined,
-		staleTime: Infinity,
-		gcTime: Infinity,
-		refetchOnMount: "always",
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
 		enabled: isCodeRoute,
 	});
 

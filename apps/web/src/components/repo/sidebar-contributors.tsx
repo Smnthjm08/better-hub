@@ -19,9 +19,8 @@ export function SidebarContributors({
 		queryKey: ["repo-contributors", owner, repo],
 		queryFn: () => revalidateContributorAvatars(owner, repo),
 		initialData: initialData ?? undefined,
-		staleTime: Infinity,
-		gcTime: Infinity,
-		refetchOnMount: "always",
+		staleTime: 5 * 60 * 1000,
+		gcTime: 10 * 60 * 1000,
 	});
 
 	if (isLoading) {
